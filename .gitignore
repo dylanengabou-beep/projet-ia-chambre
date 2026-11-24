@@ -1,0 +1,11 @@
+# Images disque et archives de VM (trop gros pour Git)
+*.vdi
+*.vdi.zip
+*.vbox
+*.vbox-prev
+*.ova
+
+# Secrets : ne jamais publier de clé API
+*.key
+.env
+secrets.yaml
