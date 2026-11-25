@@ -75,10 +75,54 @@ def ecouter_raccourci():
 
 def changer(mode, **textes):
     with verrou:
+        ancien = etat["mode"]
         etat["mode"] = mode
         etat["depuis"] = time.time()
         etat.update(textes)
     print(f"[{time.strftime('%H:%M:%S')}] {mode} {textes if textes else ''}", flush=True)
+    if mode != ancien:
+        publier(ETAT_HOLOGRAMME.get(mode, "veille"))
+
+
+# ------------------------------------------------ publication de l'état pour l'hologramme
+# sarah.py envoie à Home Assistant un événement « sarah_etat » à chaque changement :
+#   { "etat": "veille" | "ecoute" | "pense" | "parle", "enveloppe": [volume 30 fois/s], "debut": ms }
+# La page de l'hologramme (dossier hologramme/) l'écoute. Simple message : rien n'est modifié dans Home Assistant.
+AFFICHAGE = cfg.get("sarah", "affichage", fallback="photo").strip().lower()
+ETAT_HOLOGRAMME = {"veille": "veille", "ecoute": "ecoute", "reflexion": "pense", "parle": "parle"}
+publications: "queue.Queue[dict]" = queue.Queue()
+
+
+def publier(etat_holo, **donnees):
+    publications.put({"etat": etat_holo, **donnees})
+
+
+def publier_voix(env, debut_s):
+    """La voix commence : courbe de volume (30 valeurs/s) + instant de départ, pour animer l'hologramme en rythme."""
+    publier("parle", enveloppe=[round(float(v), 2) for v in np.clip(env[:1800], 0, 1.5)], debut=int(debut_s * 1000))
+
+
+async def boucle_publication(token):
+    ws_url = HA_URL.replace("http", "ws", 1) + "/api/websocket"
+    num = 0
+    while True:
+        try:
+            async with websockets.connect(ws_url, max_size=None) as ws:
+                await ws.recv()
+                await ws.send(json.dumps({"type": "auth", "access_token": token}))
+                await ws.recv()
+                while True:
+                    try:
+                        msg = await asyncio.to_thread(publications.get, True, 25)
+                    except queue.Empty:
+                        await ws.ping()  # garde la connexion ouverte
+                        continue
+                    num += 1
+                    await ws.send(json.dumps({"id": num, "type": "fire_event",
+                                              "event_type": "sarah_etat", "event_data": msg}))
+        except Exception as e:
+            print(f"   hologramme : connexion perdue ({e}), nouvel essai dans 5 s", flush=True)
+            await asyncio.sleep(5)
 
 
 def lire(cle):
@@ -655,7 +699,7 @@ def main():
     u32 = ctypes.windll.user32
 
     def montrer(oui):
-        if oui:
+        if oui and AFFICHAGE != "hologramme":  # en mode hologramme, la photo plein écran ne s'affiche plus
             u32.ShowWindow(hwnd, 5)
             u32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002)  # au premier plan
             u32.SetForegroundWindow(hwnd)
@@ -681,6 +725,7 @@ def main():
     threading.Thread(target=ecouter_raccourci, daemon=True).start()
     jeton = TOKEN_FICHIER.read_text(encoding="utf-8-sig").strip()
     threading.Thread(target=lambda: asyncio.run(ecouter_commandes_pc(jeton)), daemon=True).start()
+    threading.Thread(target=lambda: asyncio.run(boucle_publication(jeton)), daemon=True).start()
     threading.Thread(target=preparer_confirmations, args=(jeton,), daemon=True).start()
 
     horloge = pygame.time.Clock()
@@ -707,10 +752,12 @@ def main():
                 if (SYNCHRO_MICRO and ecoule > 0.5
                         and niveau_micro["v"] > max(niveau_micro["bruit"] * 4, 500)):
                     voix_debut = maintenant - 0.1  # le niveau est mesuré sur des blocs de 0,1 s
+                    publier_voix(env, voix_debut)
                     print(f"   HomePod : voix entendue {ecoule:.2f} s après l'envoi (synchro au micro)", flush=True)
                 # 2) secours : retard AirPlay estimé
                 elif ecoule > LATENCE + 1.0:
                     voix_debut = distant["t_envoi"] + LATENCE
+                    publier_voix(env, voix_debut)
                     print(f"   HomePod : voix non entendue, synchro sur le retard estimé ({LATENCE:.2f} s)", flush=True)
             fin_voix = voix_debut is not None and maintenant > voix_debut + distant["duree"] + 0.2
             if distant["erreur"] or (distant["envoye"] and fin_voix):
@@ -750,6 +797,7 @@ def main():
             else:
                 canal_voix = pygame.sndarray.make_sound(pcm).play()
                 voix_debut = time.time()
+                publier_voix(env, voix_debut)
 
         mode = lire("mode")
         if mode != "veille" and not visible:

@@ -43,6 +43,12 @@ for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep 5
 }
 Noter 'Lancement de Sarah'
+# Hologramme plein écran si config.ini contient « affichage = hologramme »
+$cfgSarah = Get-Content (Join-Path $Sarah 'config.ini') -Raw -Encoding utf8
+if ($cfgSarah -match '(?m)^\s*affichage\s*=\s*hologramme') {
+    Noter 'Lancement de l''hologramme (Edge en mode kiosque)'
+    & (Join-Path $Projet 'hologramme\lancer-hologramme.ps1')
+}
 $env:PYTHONIOENCODING = 'utf-8'
 Start-Process python -ArgumentList @('-u', "`"$Sarah\sarah.py`"") -WorkingDirectory $Sarah -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $Journal 'sarah.log') -RedirectStandardError (Join-Path $Journal 'sarah-erreurs.log')

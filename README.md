@@ -52,6 +52,7 @@ Chaque partie contient les étapes, les captures d'écran, et surtout **les prob
 - Script pour recréer la VM : [`scripts/creer-vm-homeassistant.ps1`](scripts/creer-vm-homeassistant.ps1)
 - Relais localhost (micro dans Chrome) : [`scripts/relais-localhost.py`](scripts/relais-localhost.py)
 - Programme Sarah : [`sarah-desktop/`](sarah-desktop/)
+- Hologramme de Sarah (three.js, plein écran) : [`hologramme/`](hologramme/)
 
 ## État du projet
 
@@ -63,6 +64,7 @@ Chaque partie contient les étapes, les captures d'écran, et surtout **les prob
 - [x] Mot de réveil « Hey Sarah » et visage animé en plein écran
 - [x] Volume du PC contrôlé à la voix
 - [x] Musique Spotify à la voix (titre, artiste, playlist, pause, suivant)
+- [x] Hologramme : visage en lignes lumineuses qui se forme quand on l'appelle
 - [x] Démarrage automatique avec Windows
 - [ ] Ampoules et prises connectées (TP-Link Tapo)
 - [ ] Boîtier dédié Home Assistant Green (24 h/24)

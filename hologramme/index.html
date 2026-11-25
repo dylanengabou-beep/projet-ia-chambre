@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="google" content="notranslate">
+<title>Sarah — hologramme</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #connexion {
+    position: fixed; right: 18px; bottom: 16px; display: none; align-items: center; gap: 8px;
+    font: 13px system-ui, sans-serif; color: #9aa; opacity: .75;
+  }
+  #connexion i { width: 8px; height: 8px; border-radius: 50%; background: #e55; box-shadow: 0 0 8px #e55; }
+  #debug {
+    position: fixed; left: 16px; top: 16px; display: none; gap: 8px; flex-direction: column;
+    font: 13px system-ui, sans-serif; color: #cde; cursor: default;
+  }
+  #debug .boutons { display: flex; gap: 6px; }
+  #debug button {
+    background: #0c1418; color: #cde; border: 1px solid #355; border-radius: 6px; padding: 6px 12px;
+    font: inherit; cursor: pointer;
+  }
+  #debug button.actif { border-color: #9df; color: #fff; }
+  body.debug { cursor: default; }
+  body.debug #debug { display: flex; }
+</style>
+</head>
+<body>
+<div id="connexion"><i></i><span>Home Assistant déconnecté</span></div>
+<div id="debug">
+  <div class="boutons">
+    <button data-etat="veille">veille</button>
+    <button data-etat="ecoute">écoute</button>
+    <button data-etat="pense">pense</button>
+    <button data-etat="parle">parle</button>
+  </div>
+  <div id="infos">mode debug (touche D)</div>
+</div>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+<script type="module" src="./sarah-holo.js"></script>
+</body>
+</html>
