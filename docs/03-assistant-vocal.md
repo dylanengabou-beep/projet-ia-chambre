@@ -2,7 +2,7 @@
 
 **Objectif :** quand je parle, l'IA m'entend, exécute l'action, puis me répond **à voix haute**. Gratuitement et **en local**, sans service cloud pour la voix.
 
-[← Partie 2](02-integration-claude.md) · [Retour au README](../README.md)
+[← Partie 2](02-integration-claude.md) · [Partie 4 →](04-voix-elevenlabs-et-led-govee.md)
 
 ---
 
