@@ -46,7 +46,7 @@ Je dis **« Hey Sarah, mets les LED en bleu »** : son visage apparaît en plein
 4. [Voix réaliste ElevenLabs et LED Govee](docs/04-voix-elevenlabs-et-led-govee.md)
 5. [Sarah : une IA toujours active, avec un visage](docs/05-sarah-programme-bureau.md)
 
-Chaque partie contient les étapes, les captures d'écran, et surtout **les problèmes rencontrés avec leur solution** (24 problèmes au total).
+Chaque partie contient les étapes, les captures d'écran, et surtout **les problèmes rencontrés avec leur solution** (28 problèmes au total).
 
 - 📄 Toute la documentation en Word : [`docs/Documentation_Projet_IA_Chambre.docx`](docs/Documentation_Projet_IA_Chambre.docx) (générée par [`scripts/generer-word.py`](scripts/generer-word.py))
 - Script pour recréer la VM : [`scripts/creer-vm-homeassistant.ps1`](scripts/creer-vm-homeassistant.ps1)
@@ -62,6 +62,7 @@ Chaque partie contient les étapes, les captures d'écran, et surtout **les prob
 - [x] LED de ma chambre contrôlées à la voix (Govee)
 - [x] Mot de réveil « Hey Sarah » et visage animé en plein écran
 - [x] Volume du PC contrôlé à la voix
+- [x] Musique Spotify à la voix (titre, artiste, playlist, pause, suivant)
 - [x] Démarrage automatique avec Windows
 - [ ] Ampoules et prises connectées (TP-Link Tapo)
 - [ ] Boîtier dédié Home Assistant Green (24 h/24)

@@ -50,6 +50,10 @@ Les journaux sont dans `sarah-desktop/journaux/` (`demarrage.log`, `sarah.log`).
 | `token.txt` | ❌ (secret) | Jeton d'accès à Home Assistant |
 | `visage.jpg` | ❌ | Photo du visage |
 | `modeles/` | ❌ (41 Mo) | Modèle Vosk français |
+| `spotify.txt` | ❌ (secret) | Client ID et secret de l'app développeur Spotify (`client_id=…` / `client_secret=…`) |
+| `spotify_recherche.py` | ✅ | Recherche d'un titre, artiste, album ou playlist sur Spotify |
+| `musique.ps1` | ✅ | État et contrôle du lecteur, volume de Spotify seul (baisse quand Sarah parle) |
+| `volume.ps1` | ✅ | Volume général du PC |
 
 ## Choisir le micro
 Dans `config.ini`, `micro =` accepte une partie du nom du micro. Pour lister les micros :

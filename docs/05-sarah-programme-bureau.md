@@ -65,6 +65,28 @@ sarah.py (abonné aux événements) ──► volume.ps1 ──► volume de Win
 | « Monte un peu le son » | « C'est fait, j'ai monté le son du PC de 10 points. » (2,0 s) | 35 % |
 | « Remets le volume à 40 % » | « C'est fait, le volume du PC de la chambre est réglé à 40 %. » (1,1 s) | 40 % |
 
+## Musique avec Spotify
+« Sarah, mets Drake », « Sarah, mets Meuda de Tiakola », « Sarah, mets une playlist rap », « Sarah, suivant », « Sarah, pause ».
+
+```
+Claude ──► script « Jouer de la musique » (recherche + type : titre, artiste, album, playlist)
+              │  événement « sarah_musique »
+              ▼
+sarah.py ──► API Web Spotify : recherche (spotify_recherche.py) ──► lien spotify:track:… / spotify:artist:…
+         ──► Home Assistant (intégration Spotify) : appareil « JORIS » (le PC) + lecture
+```
+
+- **Intégration Spotify** de Home Assistant, avec une app développeur Spotify (Client ID et secret) et un compte **Premium**, obligatoire pour piloter la lecture.
+- La recherche par nom se fait dans [`spotify_recherche.py`](../sarah-desktop/spotify_recherche.py), avec les identifiants de l'app gardés dans `spotify.txt` (jamais sur GitHub).
+- Pause, reprise, suivant, précédent et volume de la musique : Claude utilise directement le lecteur « Musique » (Spotify) exposé à l'assistant.
+- **La musique baisse à 20 %** dès que je dis « Sarah » et remonte quand elle a fini de parler. Seul le son de Spotify change, pas celui de Sarah, grâce à [`musique.ps1`](../sarah-desktop/musique.ps1).
+
+| Phrase | Réponse | Ce qui joue vraiment (vérifié dans Windows) |
+|---|---|---|
+| « Mets Drake » | « Je lance Drake sur les enceintes de ta chambre. » (2,0 s) | One Dance – Drake |
+| « Passe au morceau suivant » | « Je passe au morceau suivant. » (1,6 s) | Janice STFU – Drake |
+| « Mets la musique en pause » | « La musique est en pause. » (1,7 s) | En pause |
+
 ## Démarrage automatique
 À l'ouverture de ma session Windows, [`scripts/demarrer-sarah.ps1`](../scripts/demarrer-sarah.ps1) démarre la VM Home Assistant sans fenêtre, le relais `localhost:8080`, puis Sarah. Je n'ai plus rien à lancer : il suffit de dire « Sarah ».
 
@@ -131,6 +153,25 @@ sarah.py (abonné aux événements) ──► volume.ps1 ──► volume de Win
   2. La réponse est découpée en morceaux d'une ou deux phrases, fabriqués **en parallèle** et joués dans l'ordre : Sarah commence dès que la première phrase est prête.
   3. Des réponses de conversation plus courtes (deux ou trois phrases).
 - **Piste écartée pour l'instant :** appeler ElevenLabs directement en streaming depuis le PC (plus rapide, mais il faut garder une clé ElevenLabs sur le PC).
+
+### Problème 25 — Apple Music pour Windows ne se laisse pas piloter
+- **Essai :** l'application **ignore les liens** `music://` vers un titre (elle s'ouvre sans aller sur le morceau). Piloter son interface (recherche, album, menu « … » → « Play ») a marché deux fois, puis échoué selon les recherches.
+- **Solution :** passer à **Spotify**, qui a une vraie API et une intégration officielle Home Assistant. Apple Music reste pilotable pour lecture, pause et suivant par les contrôles multimédias de Windows (`musique.ps1`).
+
+### Problème 26 — Impossible de créer l'app développeur Spotify
+- **Cause :** Spotify exige une **adresse e-mail vérifiée**, et l'e-mail de vérification n'arrivait pas (adresse iCloud).
+- **Solution :** vérifier les courriers indésirables, renvoyer l'e-mail, ou changer l'adresse du compte.
+- **Piste étudiée :** Spotify Soloist (lecteur sans interface avec une simple clé API) joue sur le PC, mais **ne sait pas chercher** un titre par son nom.
+
+### Problème 27 — « Ça refuse de se connecter » à Spotify
+- **Cause :** après l'autorisation, Spotify renvoie vers **my.home-assistant.io**, qui redirigeait vers l'adresse par défaut `homeassistant.local:8123`. Mon Home Assistant répond sur `localhost:8080`.
+- **Solution :** sur my.home-assistant.io, régler l'adresse de l'instance sur `http://localhost:8080` (réglage gardé dans le navigateur), puis relancer l'ajout de Spotify.
+
+### Problème 28 — « Je lance Drake »… mais rien ne jouait
+- **Diagnostic :** Home Assistant ne met à jour l'état de Spotify que toutes les 30 secondes. J'ai donc vérifié **ce qui joue vraiment** avec les contrôles multimédias de Windows : Spotify était resté en pause.
+- **Cause :** j'envoyais l'**artiste** comme si c'était un **titre** (`media_content_type: music`), et Spotify l'ignorait sans erreur.
+- **Solution :** titre → `music` ; artiste → `artist` ; album → `album` ; playlist → `playlist`.
+- **Autre détail :** juste après avoir choisi l'appareil « JORIS », Home Assistant ne propose pas encore la lecture. Le programme actualise le lecteur jusqu'à ce que la lecture soit possible (environ 1 à 2 s).
 
 ---
 
