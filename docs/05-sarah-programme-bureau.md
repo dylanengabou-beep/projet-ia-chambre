@@ -81,7 +81,7 @@ Voir [`sarah-desktop/README.md`](../sarah-desktop/README.md).
 - **Causes :** elle entendait sa propre voix dans les enceintes, et chaque demande démarrait une nouvelle conversation (« Oui » ne voulait plus rien dire pour elle).
 - **Solutions :** elle ignore le micro pendant 2 secondes après avoir parlé, et le programme renvoie le `conversation_id` pendant 5 minutes pour garder le fil.
 
-### Problème 23 — Elle se réveillait alors que je ne l'avais pas appelée
+### Problème 22 — Elle se réveillait alors que je ne l'avais pas appelée
 - **Symptôme :** elle réagissait à des phrases sans son nom (« Ouais, tu dis quoi ? », « C'est bon, tu peux partir »…).
 - **Cause :** pour détecter le mot de réveil, j'avais limité Vosk à un vocabulaire d'un seul mot : « sarah ». Il essayait alors de faire correspondre **n'importe quelle phrase** à ce mot.
 - **Test :** 66 phrases générées avec 3 voix différentes, avec et sans « Sarah » :
@@ -94,7 +94,7 @@ Voir [`sarah-desktop/README.md`](../sarah-desktop/README.md).
 - **Solution :** Vosk reconnaît toute la langue française, et Sarah ne se réveille que si le mot « sarah » (ou « sara ») est vraiment entendu.
 - **Vie privée :** tant qu'elle n'est pas appelée, l'écoute se fait **uniquement sur le PC**, hors ligne. Rien n'est enregistré ni envoyé sur Internet. Ma voix n'est envoyée à Home Assistant et à ElevenLabs **qu'après** « Sarah ».
 
-### Problème 22 — Le tableau de bord « sarah » refusait d'être créé
+### Problème 23 — Le tableau de bord « sarah » refusait d'être créé
 - **Cause :** l'adresse d'un tableau de bord Home Assistant doit contenir un **tiret**.
 - **Solution :** `ia-sarah`.
 
