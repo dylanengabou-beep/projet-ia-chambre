@@ -26,6 +26,20 @@ python sarah.py
 
 `Échap` coupe sa voix.
 
+## Démarrage automatique avec Windows
+Le script [`scripts/demarrer-sarah.ps1`](../scripts/demarrer-sarah.ps1) lance, dans l'ordre :
+1. la VM Home Assistant, **sans fenêtre** (`--type headless`) ;
+2. le relais `localhost:8080`, seulement si la VM est en mode pont. Il trouve l'adresse de Home Assistant tout seul grâce à `homeassistant.local` ;
+3. Sarah, une fois que Home Assistant répond.
+
+Il est lancé à chaque ouverture de session par un raccourci placé dans le dossier **Démarrage** de Windows (`Win + R` → `shell:startup`) :
+
+```
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "...\scripts\demarrer-sarah.ps1"
+```
+
+Les journaux sont dans `sarah-desktop/journaux/` (`demarrage.log`, `sarah.log`). Pour **désactiver** le démarrage automatique, il suffit de supprimer le raccourci « Sarah - IA de ma chambre » du dossier Démarrage.
+
 ## Fichiers
 
 | Fichier | Sur GitHub ? | Rôle |

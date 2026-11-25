@@ -45,6 +45,9 @@ J'ai aussi créé un tableau de bord **« Sarah »** dans Home Assistant : quand
 ## Installation
 Voir [`sarah-desktop/README.md`](../sarah-desktop/README.md).
 
+## Démarrage automatique
+À l'ouverture de ma session Windows, [`scripts/demarrer-sarah.ps1`](../scripts/demarrer-sarah.ps1) démarre la VM Home Assistant sans fenêtre, le relais `localhost:8080`, puis Sarah. Je n'ai plus rien à lancer : il suffit de dire « Sarah ».
+
 ---
 
 ## Problèmes rencontrés et solutions
