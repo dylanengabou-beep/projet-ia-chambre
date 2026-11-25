@@ -26,6 +26,26 @@ python sarah.py
 
 `Échap` coupe sa voix.
 
+## Faire parler Sarah sur un HomePod, visage synchronisé
+Dans `config.ini`, section `[sortie]` :
+
+```ini
+appareil = homepod
+homepod = HomePod Blue      ; le nom exact dans l'app Maison
+```
+
+- [`homepod.py`](homepod.py) envoie la voix **depuis le PC** en AirPlay (bibliothèque `pyatv`, partie audio RAOP seulement : aucun appairage nécessaire).
+- Une réponse = un seul envoi : les phrases sont fabriquées en parallèle puis recollées, car chaque envoi AirPlay ajoute environ 1,5 s de tampon.
+- **Synchro du visage :**
+  1. le PC note l'instant exact où l'envoi commence ;
+  2. le visage « réfléchit » pendant le tampon AirPlay ;
+  3. dès que **le micro du PC entend la voix sortir du HomePod**, l'animation démarre sur cet instant (précision de 0,1 s) ;
+  4. si le micro ne l'entend pas (HomePod trop loin), le visage démarre après le retard estimé `latence_ms` (1500 par défaut).
+- Le journal affiche le retard mesuré (« voix entendue 1.62 s après l'envoi ») : on peut reporter cette valeur dans `latence_ms`.
+- Si le HomePod ne répond pas, Sarah parle sur le PC.
+
+Tester la connexion sans rien jouer : `python homepod.py "HomePod Blue"`
+
 ## Démarrage automatique avec Windows
 Le script [`scripts/demarrer-sarah.ps1`](../scripts/demarrer-sarah.ps1) lance, dans l'ordre :
 1. la VM Home Assistant, **sans fenêtre** (`--type headless`) ;

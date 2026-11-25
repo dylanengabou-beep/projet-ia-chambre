@@ -345,11 +345,42 @@ def preparer_confirmations(token):
     print(f"   confirmations immédiates prêtes ({faites} nouvelles, {len(toutes_les_confirmations())} au total)", flush=True)
 
 
+# ------------------------------------------------ sortie de la voix : PC ou HomePod
+SORTIE = cfg.get("sortie", "appareil", fallback="pc").strip().lower()
+HOMEPOD_NOM = cfg.get("sortie", "homepod", fallback="HomePod Blue").strip()
+LATENCE = cfg.getint("sortie", "latence_ms", fallback=1500) / 1000  # retard AirPlay estimé (secours)
+SYNCHRO_MICRO = cfg.get("sortie", "synchro_micro", fallback="oui").strip().lower() in ("oui", "yes", "true", "1", "on")
+_homepod = None
+
+
+def homepod():
+    global _homepod
+    if _homepod is None:
+        import homepod as hp
+        _homepod = hp.HomePod(HOMEPOD_NOM)
+    return _homepod
+
+
+def en_pcm(mp3):
+    """MP3 → échantillons int16 au format du mélangeur pygame (même fréquence et canaux)."""
+    return pygame.sndarray.array(pygame.mixer.Sound(file=io.BytesIO(mp3)))
+
+
 def parler(token, texte):
     """Fabrique la voix de chaque morceau en parallèle et les joue dans l'ordre dès qu'ils sont prêts."""
     t0 = time.time()
     fin_parole.clear()
     blocs = morceaux(texte)
+    if SORTIE == "homepod":
+        # HomePod : une seule réponse = un seul envoi AirPlay (chaque envoi coûte ~1,5 s de tampon),
+        # donc on attend tous les morceaux et on les recolle avant d'envoyer.
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            sons = [f.result(timeout=40) for f in [pool.submit(voix_de, token, b) for b in blocs]]
+        print(f"   voix complète prête en {time.time() - t0:.1f} s ({len(blocs)} morceaux) → {HOMEPOD_NOM}", flush=True)
+        a_jouer.put(("pcm", np.concatenate([en_pcm(s) for s in sons])))
+        a_jouer.put(None)
+        fin_parole.wait(120)
+        return
     with ThreadPoolExecutor(max_workers=3) as pool:
         futurs = [pool.submit(voix_de, token, b) for b in blocs]
         for i, f in enumerate(futurs):
@@ -656,6 +687,7 @@ def main():
     visible = False
     apparition = 0.0
     canal_voix, env, voix_debut = None, None, 0.0
+    distant = None  # voix en cours sur le HomePod
     lisse = 0.0  # niveau lissé pour l'animation
     while True:
         for ev in pygame.event.get():
@@ -666,24 +698,58 @@ def main():
                 with a_jouer.mutex:
                     a_jouer.queue.clear()
                 fin_parole.set()
-        libre = canal_voix is None or not canal_voix.get_busy()
+        # --- voix envoyée au HomePod : le visage attend que le HomePod parle vraiment
+        if distant is not None:
+            maintenant = time.time()
+            if voix_debut is None and distant["t_envoi"] is not None:
+                ecoule = maintenant - distant["t_envoi"]
+                # 1) synchro au micro : le micro du PC entend la voix sortir du HomePod
+                if (SYNCHRO_MICRO and ecoule > 0.5
+                        and niveau_micro["v"] > max(niveau_micro["bruit"] * 4, 500)):
+                    voix_debut = maintenant - 0.1  # le niveau est mesuré sur des blocs de 0,1 s
+                    print(f"   HomePod : voix entendue {ecoule:.2f} s après l'envoi (synchro au micro)", flush=True)
+                # 2) secours : retard AirPlay estimé
+                elif ecoule > LATENCE + 1.0:
+                    voix_debut = distant["t_envoi"] + LATENCE
+                    print(f"   HomePod : voix non entendue, synchro sur le retard estimé ({LATENCE:.2f} s)", flush=True)
+            fin_voix = voix_debut is not None and maintenant > voix_debut + distant["duree"] + 0.2
+            if distant["erreur"] or (distant["envoye"] and fin_voix):
+                if distant["erreur"]:  # HomePod injoignable : on joue sur le PC
+                    print(f"   HomePod : erreur ({distant['erreur']}), voix jouée sur le PC", flush=True)
+                    canal_voix = pygame.sndarray.make_sound(distant["pcm"]).play()
+                    voix_debut = time.time()
+                distant = None
+        libre = (canal_voix is None or not canal_voix.get_busy()) and distant is None
         if libre and not a_jouer.empty():  # morceau suivant, seulement quand le précédent est fini
             morceau = a_jouer.get()
             if morceau is None:  # fin de la réponse
                 canal_voix = None
                 fin_parole.set()
                 continue
-            son = pygame.mixer.Sound(file=io.BytesIO(morceau))
+            pcm = morceau[1] if isinstance(morceau, tuple) else en_pcm(morceau)
             # enveloppe de sa voix (volume toutes les 1/30 s) pour animer le visage
             freq, _, canaux = pygame.mixer.get_init()
-            ech = pygame.sndarray.array(son).astype(np.float32)
+            ech = pcm.astype(np.float32)
             if ech.ndim > 1:
                 ech = ech.mean(axis=1)
             pas = max(1, freq // 30)
             env = np.sqrt(np.add.reduceat(ech ** 2, np.arange(0, len(ech), pas)) / pas)
             env = env / (np.percentile(env, 95) + 1e-6)
-            canal_voix = son.play()
-            voix_debut = time.time()
+            if SORTIE == "homepod":
+                import homepod as hp
+                distant = {"pcm": pcm, "duree": len(pcm) / freq, "t_envoi": None, "envoye": False, "erreur": None}
+                canal_voix, voix_debut = None, None
+
+                def envoyer(d=distant, wav=hp.en_wav(pcm, freq, canaux)):
+                    try:
+                        homepod().jouer(wav, au_debut=lambda: d.update(t_envoi=time.time()))
+                    except Exception as e:
+                        d["erreur"] = str(e) or type(e).__name__
+                    d["envoye"] = True
+                threading.Thread(target=envoyer, daemon=True).start()
+            else:
+                canal_voix = pygame.sndarray.make_sound(pcm).play()
+                voix_debut = time.time()
 
         mode = lire("mode")
         if mode != "veille" and not visible:
@@ -701,9 +767,11 @@ def main():
         # cible d'animation : ma voix quand elle écoute, sa voix quand elle parle
         if mode == "ecoute":
             cible = min(1.0, niveau_micro["v"] / max(niveau_micro["bruit"] * 6, 1500))
-        elif mode == "parle" and env is not None and canal_voix is not None:
+        elif mode == "parle" and env is not None and voix_debut is not None and (canal_voix is not None or distant is not None):
             i = int((t - voix_debut) * 30)
-            cible = float(min(1.0, env[i])) if i < len(env) else 0.0
+            cible = float(min(1.0, env[i])) if 0 <= i < len(env) else 0.0
+        elif mode == "parle" and distant is not None:  # en attendant que le HomePod commence
+            cible = 0.35 + 0.25 * math.sin(t * 5)
         elif mode == "reflexion":
             cible = 0.35 + 0.25 * math.sin(t * 5)
         else:

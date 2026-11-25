@@ -3,3 +3,4 @@ sounddevice>=0.5
 pygame>=2.6
 websockets>=13
 numpy>=2.0
+pyatv>=0.18
