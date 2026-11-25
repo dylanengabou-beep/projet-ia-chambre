@@ -1,48 +1,49 @@
 # Hologramme de Sarah
 
-Le visage de Sarah, tiré de sa photo, en **lignes horizontales lumineuses** qui suivent son relief. Le bas se défait en poussière. Inspiré d'une image de visage en lignes et particules.
+Sarah apparaît en plein écran **quand on l'appelle** : une tête sculptée en lignes lumineuses, avec des particules qui s'envolent de la nuque. L'image de référence (`tete.jpg`) est affichée telle quelle et animée en temps réel par un shader three.js.
 
 | État | Ce qu'on voit |
 |---|---|
-| **veille** | un nuage de particules presque invisible |
-| **écoute** (après « Hey Sarah ») | les particules se rassemblent et forment son visage, qui « respire » |
-| **pense** | une vague de lumière parcourt les lignes de haut en bas |
-| **parle** | les lignes ondulent autour de la bouche, **au rythme de sa vraie voix** |
-| après la réponse | elle reste visible environ 4 s, puis se défait |
+| **veille** | rien : la fenêtre est cachée, on voit son bureau |
+| **écoute** (après « Sarah » ou Ctrl+Espace) | elle apparaît en fondu, baisse le menton et regarde droit devant elle |
+| **pense** | une lumière parcourt plus vite les lignes du crâne et du cou |
+| **parle** | la bouche s'ouvre **au rythme de sa vraie voix**, elle hoche la tête, les particules s'accélèrent |
+| après la réponse | elle reste environ 4 s, s'efface en fondu, puis la fenêtre se cache |
+
+La souris éclaire les lignes là où elle passe et écarte les particules.
 
 ## Comment ça marche
 
 ```
 sarah.py ──(événement « sarah_etat » : état + courbe de volume de la voix)──► Home Assistant
-                                                                                  │ WebSocket
-                                          page hologramme (three.js) ◄────────────┘
+   │                                                                              │ WebSocket
+   └── affiche / cache la fenêtre                 page hologramme (three.js) ◄────┘
 ```
 
-- **Pourquoi pas `assist_satellite` ni les événements du pipeline ?** Il n'y a aucune entité `assist_satellite` (Sarah n'est pas un satellite Home Assistant), et les événements du pipeline Assist ne sont envoyés qu'au programme qui a lancé la demande (`sarah.py`), pas sur le bus d'événements.
-- C'est donc **`sarah.py`** qui publie son état à chaque changement. Quand elle parle, il ajoute la **courbe de volume de sa voix** (30 valeurs par seconde) et l'instant exact où elle commence. La voix est jouée par `sarah.py`, pas par le navigateur, mais la page anime quand même les lignes au vrai rythme. Sans courbe, l'animation est simulée.
-- Ce sont de simples messages : **aucune configuration de Home Assistant n'est modifiée**.
+- **`sarah.py`** publie son état à chaque changement. Quand elle parle, il ajoute la **courbe de volume de sa voix** (30 valeurs par seconde) et l'instant exact où elle commence : la bouche suit la vraie voix.
+- **`sarah.py`** affiche aussi la fenêtre « Sarah — hologramme » par-dessus tout quand on l'appelle, et la cache 6 s après le retour en veille (`surveiller_hologramme`).
+- Il n'y a ni `assist_satellite` ni événements du pipeline sur le bus de Home Assistant : c'est pour ça que `sarah.py` publie lui-même son état. Ce sont de simples messages : **aucune configuration de Home Assistant n'est modifiée**.
 
 ## Fichiers
 
 | Fichier | Rôle |
 |---|---|
-| `index.html`, `sarah-holo.js` | La page et l'hologramme (three.js) |
-| `vendor/three.module.min.js` | three.js 0.170, copie locale (marche hors ligne) |
+| `index.html`, `sarah-holo.js` | La page et l'hologramme actuel |
+| `tete.jpg` | Image de référence (**ignorée par git**) |
+| `vendor/` | three.js 0.170 et ses modules, copies locales (marche hors ligne) |
 | `serveur.py` | Petit serveur local : `http://127.0.0.1:8770` (ce PC seulement, sans cache) |
 | `lancer-hologramme.ps1` | Lance le serveur et ouvre Edge en **plein écran (kiosque)** |
-| `config.json` | Adresse de Home Assistant + jeton (**ignoré par git**) |
-| `config.exemple.json` | Modèle de `config.json` |
-| `visage.jpg` | Photo de Sarah (**ignorée par git**) |
+| `config.json` | Adresse de Home Assistant + jeton (**ignoré par git**) ; modèle : `config.exemple.json` |
+| `sarah-holo-lignes.js`, `sarah-holo-tete3d.js`, `sarah-holo-silhouette.js` | Anciennes versions (voir `docs/06-hologramme.md`) |
+| `avatar/` | Essai d'avatar 3D en corps entier (VRM) ; le modèle `.vrm` va dans `modeles/` (**ignoré par git**) |
 
 ## Installation
 1. **Jeton :** Home Assistant → clic sur ton nom en bas à gauche → onglet **Sécurité** → **Jetons d'accès longue durée** → **Créer un jeton** (nom : `Hologramme`). Copie-le dans `config.json` (à partir de `config.exemple.json`).
-2. **Photo :** mettre l'image du visage dans `visage.jpg`.
-3. Dans `sarah-desktop/config.ini` : `affichage = hologramme` (la photo plein écran de `sarah.py` ne s'affiche plus).
-4. Lancer : `powershell -File hologramme\lancer-hologramme.ps1`.
-
-**Démarrage automatique :** `scripts/demarrer-sarah.ps1`, déjà lancé à chaque ouverture de session, ouvre aussi l'hologramme quand `affichage = hologramme`.
+2. **Image :** mettre l'image de référence dans `tete.jpg`.
+3. Dans `sarah-desktop/config.ini` : `affichage = hologramme`.
+4. Lancer : `powershell -File hologramme\lancer-hologramme.ps1` (ou redémarrer Sarah avec `scripts/demarrer-sarah.ps1`, lancé automatiquement à l'ouverture de session).
 
 ## Utilisation
-- **D** : mode debug, avec des boutons pour forcer veille, écoute, pense ou parle.
+- **D** : mode debug (la rend visible même en veille, avec des boutons veille / écoute / pense / parle).
 - **Alt + F4** : fermer le plein écran.
 - **Point rouge** en bas à droite : Home Assistant injoignable. La page se reconnecte seule (après 1 s, 2 s, 4 s… jusqu'à 15 s).

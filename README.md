@@ -45,8 +45,9 @@ Je dis **« Hey Sarah, mets les LED en bleu »** : son visage apparaît en plein
 3. [Assistant vocal : Whisper + Piper](docs/03-assistant-vocal.md)
 4. [Voix réaliste ElevenLabs et LED Govee](docs/04-voix-elevenlabs-et-led-govee.md)
 5. [Sarah : une IA toujours active, avec un visage](docs/05-sarah-programme-bureau.md)
+6. [L'hologramme de Sarah](docs/06-hologramme.md)
 
-Chaque partie contient les étapes, les captures d'écran, et surtout **les problèmes rencontrés avec leur solution** (31 problèmes au total).
+Chaque partie contient les étapes, les captures d'écran, et surtout **les problèmes rencontrés avec leur solution** (33 problèmes au total).
 
 - 📄 Toute la documentation en Word : [`docs/Documentation_Projet_IA_Chambre.docx`](docs/Documentation_Projet_IA_Chambre.docx) (générée par [`scripts/generer-word.py`](scripts/generer-word.py))
 - Script pour recréer la VM : [`scripts/creer-vm-homeassistant.ps1`](scripts/creer-vm-homeassistant.ps1)

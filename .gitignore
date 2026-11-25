@@ -22,3 +22,8 @@ sarah-desktop/cache_voix/
 # Hologramme
 hologramme/config.json
 hologramme/visage.jpg
+hologramme/reference.jpg
+hologramme/vendor/examples/models/
+hologramme/silhouette.jpg
+hologramme/modeles/
+hologramme/tete.jpg

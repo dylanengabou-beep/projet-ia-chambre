@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sarah — avatar hologramme</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body.transparent, body.transparent html { background: transparent; }
+  canvas { display: block; }
+  #connexion { position: fixed; right: 14px; bottom: 12px; display: none; align-items: center; gap: 7px;
+    font: 12px system-ui, sans-serif; color: #8ab; opacity: .75; }
+  #connexion i { width: 7px; height: 7px; border-radius: 50%; background: #e55; box-shadow: 0 0 8px #e55; }
+  #infos { position: fixed; left: 12px; top: 10px; font: 12px ui-monospace, monospace; color: #6cf; opacity: .8;
+    display: none; white-space: pre; pointer-events: none; }
+  body.debug #infos { display: block; }
+  #debug { position: fixed; left: 12px; bottom: 12px; display: none; flex-wrap: wrap; gap: 6px; max-width: 90vw; }
+  body.debug #debug { display: flex; }
+  #debug button { background: #061418; color: #9df; border: 1px solid #1d4b55; border-radius: 6px; padding: 5px 10px;
+    font: 12px system-ui, sans-serif; cursor: pointer; }
+  #debug button.actif { border-color: #6ef; color: #fff; }
+</style>
+</head>
+<body>
+<div id="connexion"><i></i><span>Home Assistant déconnecté</span></div>
+<div id="infos"></div>
+<div id="debug">
+  <button data-etat="veille">repos</button><button data-etat="ecoute">écoute</button>
+  <button data-etat="pense">réflexion</button><button data-etat="parle">parole</button>
+  <button data-anim="saluer">saluer</button><button data-anim="danser">danser</button><button data-anim="applaudir">applaudir</button>
+  <button data-qualite="bas">qualité basse</button><button data-qualite="moyen">moyenne</button><button data-qualite="eleve">élevée</button>
+</div>
+<script type="importmap">
+{ "imports": {
+    "three": "../vendor/three.module.min.js",
+    "three/addons/": "../vendor/examples/jsm/",
+    "@pixiv/three-vrm": "../vendor/three-vrm.module.min.js"
+} }
+</script>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

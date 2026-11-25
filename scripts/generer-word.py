@@ -17,7 +17,7 @@ from docx.shared import Cm, Pt, RGBColor
 RACINE = Path(__file__).resolve().parent.parent
 SORTIE = RACINE / "docs" / "Documentation_Projet_IA_Chambre.docx"
 PARTIES = ["01-installation-vm.md", "02-integration-claude.md", "03-assistant-vocal.md",
-           "04-voix-elevenlabs-et-led-govee.md", "05-sarah-programme-bureau.md"]
+           "04-voix-elevenlabs-et-led-govee.md", "05-sarah-programme-bureau.md", "06-hologramme.md"]
 BLEU = RGBColor(0x1F, 0x4E, 0x79)
 LARGEUR_UTILE = Cm(16)
 

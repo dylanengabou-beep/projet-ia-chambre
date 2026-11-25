@@ -1,295 +1,240 @@
-// Hologramme de Sarah : son visage (à partir de sa photo) découpé en lignes lumineuses horizontales,
-// qui se rassemblent ou se dispersent en particules selon son état.
+// Hologramme de Sarah — V4 : l'image de référence (tete.jpg) telle quelle, rendue vivante.
+// L'image n'est pas redessinée : un shader la déforme et l'éclaire en temps réel.
+//   - la bouche s'ouvre au rythme de la voix (la lèvre inférieure et le menton descendent)
+//   - la tête bouge doucement autour du cou (respiration, se lève quand elle écoute, se baisse quand elle réfléchit)
+//   - une lumière parcourt les lignes du crâne et du cou ; les points scintillent
+//   - des particules s'échappent de la nuque, comme sur l'image, et fuient la souris
 import * as THREE from "three";
 
-// ------------------------------------------------------------------ réglages
-const LIGNES = 150;          // nombre de lignes horizontales
-const POINTS_PAR_LIGNE = 260; // finesse de chaque ligne
-const IMAGE = "./visage.jpg";
+const IMAGE = "./tete.jpg";
+const L = 735, H = 1105;                 // taille de l'image en pixels
+const RATIO = L / H;
 
-// ------------------------------------------------------------------ scène
+// ------------------------------------------------------------------ scène 2D : l'image remplit la hauteur de l'écran
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 50);
-camera.position.set(0, 0.05, 3.4);
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -10, 10);
 const rendu = new THREE.WebGLRenderer({ antialias: true });
 rendu.setPixelRatio(Math.min(devicePixelRatio, 2));
-rendu.setSize(innerWidth, innerHeight);
-rendu.setClearColor(0x000000, 1);
 document.body.appendChild(rendu.domElement);
-addEventListener("resize", () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
+function redimensionner() {
+  const a = innerWidth / innerHeight;
+  camera.left = -a; camera.right = a; camera.top = 1; camera.bottom = -1; camera.updateProjectionMatrix();
   rendu.setSize(innerWidth, innerHeight);
-});
-const tete = new THREE.Group();
-scene.add(tete);
-
-// ------------------------------------------------------------------ photo → relief
-function chargerImage(url) {
-  return new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = url; });
 }
+redimensionner();
+addEventListener("resize", redimensionner);
+// pixel de l'image → coordonnées de la scène
+const versScene = (x, y) => new THREE.Vector2((x / L - 0.5) * 2 * RATIO, (0.5 - y / H) * 2);
 
-function analyserPhoto(img) {
-  const L = 240, H = 240;
-  const c = document.createElement("canvas");
-  c.width = L; c.height = H;
-  const ctx = c.getContext("2d", { willReadFrequently: true });
-  // recadrage carré centré
-  const cote = Math.min(img.width, img.height);
-  ctx.drawImage(img, (img.width - cote) / 2, (img.height - cote) / 2, cote, cote, 0, 0, L, H);
-  const px = ctx.getImageData(0, 0, L, H).data;
-  const lum = new Float32Array(L * H);
-  for (let i = 0; i < L * H; i++) lum[i] = (px[i * 4] * 0.3 + px[i * 4 + 1] * 0.59 + px[i * 4 + 2] * 0.11) / 255;
-  // couleur du fond = moyenne des bords du haut
-  let fond = 0, n = 0;
-  for (let x = 0; x < L; x++) for (let y = 0; y < 6; y++) { fond += lum[y * L + x]; n++; }
-  fond /= n;
-  // masque : ce qui s'écarte du fond, rempli ligne par ligne entre le premier et le dernier point de Sarah
-  const masque = new Uint8Array(L * H);
-  for (let y = 0; y < H; y++) {
-    let g = -1, d = -1;
-    for (let x = 0; x < L; x++) if (Math.abs(lum[y * L + x] - fond) > 0.12) { if (g < 0) g = x; d = x; }
-    if (g >= 0 && d - g > 3) for (let x = g; x <= d; x++) masque[y * L + x] = 1;
-  }
-  // flou de la luminance (relief doux)
-  const flou = new Float32Array(L * H);
-  const R = 4;
-  for (let y = 0; y < H; y++) for (let x = 0; x < L; x++) {
-    let s = 0, k = 0;
-    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
-      const xx = Math.min(L - 1, Math.max(0, x + dx)), yy = Math.min(H - 1, Math.max(0, y + dy));
-      s += lum[yy * L + xx]; k++;
-    }
-    flou[y * L + x] = s / k;
-  }
-  return { L, H, lum, flou, masque };
-}
-
-// ------------------------------------------------------------------ géométrie : lignes + particules
-function construire(p) {
-  const { L, H, lum, flou, masque } = p;
-  const pos = [], disp = [], alea = [], lumi = [], ligne = [], detache = [];
-  const segA = [], segB = [];
-  let index = 0;
-  for (let j = 0; j < LIGNES; j++) {
-    const y = Math.floor((j + 0.5) * H / LIGNES);
-    let precedent = -1;
-    for (let i = 0; i < POINTS_PAR_LIGNE; i++) {
-      const x = Math.floor((i + 0.5) * L / POINTS_PAR_LIGNE);
-      const m = masque[y * L + x];
-      if (!m) { precedent = -1; continue; }
-      // coordonnées : largeur ~1.6, centrées
-      const X = (x / L - 0.5) * 1.6, Y = (0.5 - y / H) * 1.6;
-      // relief : un ovale (volume de la tête) + les détails donnés par la lumière de la photo
-      const ov = Math.max(0, 1 - Math.pow((x / L - 0.5) / 0.32, 2));
-      const Z = 0.30 * Math.sqrt(ov) + 0.025 * (flou[y * L + x] - 0.35);
-      pos.push(X, Y, Z);
-      // position dispersée : nuage autour, décalé vers la droite et le bas (comme le corps qui se défait)
-      const a = Math.random() * Math.PI * 2, r = 0.6 + Math.random() * 1.4;
-      disp.push(X + Math.cos(a) * r * 0.9 + 0.25, Y + Math.sin(a) * r * 0.7 - 0.2, Z + (Math.random() - 0.5) * 1.2);
-      alea.push(Math.random());
-      // éclat de la ligne : fort sur les reliefs (front, nez, joues, cou) et sur les bords de la silhouette
-      const gx = flou[y * L + Math.min(L - 1, x + 2)] - flou[y * L + Math.max(0, x - 2)];
-      const gy = flou[Math.min(H - 1, y + 2) * L + x] - flou[Math.max(0, y - 2) * L + x];
-      const bordSilhouette = (!masque[y * L + Math.max(0, x - 3)] || !masque[y * L + Math.min(L - 1, x + 3)]) ? 1 : 0;
-      const eclat = Math.min(1, 0.06 + 1.5 * Math.pow(lum[y * L + x], 1.6) + 1.5 * Math.hypot(gx, gy) + 0.5 * bordSilhouette);
-      lumi.push(eclat);
-      ligne.push(j / LIGNES);
-      // en bas à droite, une partie des points se détache de sa ligne et part en poussière (comme sur l'image)
-      const zone = Math.max(0, (j / LIGNES - 0.5) / 0.5) * Math.max(0, (x / L - 0.35) / 0.65);
-      const d = Math.random() < zone * 0.9 ? 1 : 0;
-      detache.push(d);
-      if (precedent >= 0 && !d) { segA.push(precedent); segB.push(index); }
-      precedent = d ? -1 : index;
-      index++;
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute("aDisp", new THREE.Float32BufferAttribute(disp, 3));
-  g.setAttribute("aAlea", new THREE.Float32BufferAttribute(alea, 1));
-  g.setAttribute("aLum", new THREE.Float32BufferAttribute(lumi, 1));
-  g.setAttribute("aLigne", new THREE.Float32BufferAttribute(ligne, 1));
-  g.setAttribute("aDetache", new THREE.Float32BufferAttribute(detache, 1));
-  const indices = [];
-  for (let k = 0; k < segA.length; k++) indices.push(segA[k], segB[k]);
-  const gl = g.clone();
-  gl.setIndex(indices);
-  return { points: g, lignes: gl };
-}
-
-// ------------------------------------------------------------------ shaders
+// ------------------------------------------------------------------ uniformes
 const uniformes = {
-  uTemps: { value: 0 },
-  uForme: { value: 0 },      // 0 = nuage, 1 = visage formé
-  uVoix: { value: 0 },       // volume de sa voix (0..1)
-  uPense: { value: 0 },      // vague lumineuse quand elle réfléchit
-  uEcoute: { value: 0 },
-  uTaille: { value: rendu.getPixelRatio() },
+  uImage: { value: null }, uTemps: { value: 0 },
+  uBouche: { value: 0 },                 // ouverture de la bouche (0..1)
+  uTete: { value: 0 }, uTeteY: { value: 0 },   // rotation de la tête autour du cou, et légère élévation
+  uLueur: { value: 1 },                  // luminosité générale selon l'état
+  uBalayage: { value: 0.3 },             // vitesse de la lumière qui parcourt les lignes
+  uPense: { value: 0 },
+  uSouris: { value: new THREE.Vector2(-9, -9) },   // en pixels de l'image
 };
 
-const vertexCommun = /* glsl */`
-  attribute vec3 aDisp; attribute float aAlea; attribute float aLum; attribute float aLigne; attribute float aDetache;
-  uniform float uTemps, uForme, uVoix, uPense, uEcoute, uTaille;
-  varying float vAlpha; varying float vLum; varying float vF;
-  vec3 calcul() {
-    // chaque point rejoint le visage à son rythme
-    float f = smoothstep(aAlea * 0.45, aAlea * 0.45 + 0.55, uForme);
-    vF = f;
-    vec3 p = mix(aDisp, position, f);
-    // dérive douce du nuage
-    p += 0.03 * vec3(sin(uTemps * 0.7 + aAlea * 40.0), cos(uTemps * 0.5 + aAlea * 30.0), sin(uTemps * 0.6 + aAlea * 20.0)) * (1.0 - f);
-    // le corps se défait en bas à droite, même formé (comme sur l'image)
-    // les points détachés dérivent lentement vers la droite et le bas, puis reviennent (boucle douce)
-    float cycle = fract(uTemps * 0.06 + aAlea * 7.0);
-    p += vec3(0.45, -0.18, 0.12) * aDetache * cycle * (0.4 + aAlea);
-    // la voix fait onduler les lignes, surtout autour de la bouche
-    float bouche = exp(-pow((position.y + 0.05) / 0.18, 2.0)) * exp(-pow(position.x / 0.3, 2.0));
-    p.z += uVoix * (0.02 + 0.05 * bouche) * sin(aLigne * 90.0 - uTemps * 12.0);
-    // en écoute, une légère respiration
-    p *= 1.0 + uEcoute * 0.008 * sin(uTemps * 3.0);
-    vLum = aLum;
-    float vague = uPense * exp(-pow((aLigne - fract(uTemps * 0.35)) * 12.0, 2.0));
-    vAlpha = f * (0.55 + 0.45 * aLum) * (1.0 - aDetache * cycle * 0.8) + vague * 0.8 + uVoix * 0.25 * bouche
-             + aDetache * f * 0.9;   // la poussière brille un peu plus
-    return p;
-  }
-`;
+// ------------------------------------------------------------------ l'image animée
+const matImage = new THREE.ShaderMaterial({
+  uniforms: uniformes, transparent: false,
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D uImage; uniform float uTemps, uBouche, uTete, uTeteY, uLueur, uBalayage, uPense; uniform vec2 uSouris;
+    varying vec2 vUv;
+    const vec2 TAILLE = vec2(${L}.0, ${H}.0);
+    const vec2 COU = vec2(380.0, 760.0);
+    vec2 tourne(vec2 v, float a){ float c = cos(a), s = sin(a); return vec2(c * v.x - s * v.y, s * v.x + c * v.y); }
+    float hasard(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main(){
+      vec2 p = vec2(vUv.x, 1.0 - vUv.y) * TAILLE;       // pixel de l'écran, en pixels de l'image
+      vec2 q = p;                                         // pixel de l'image a afficher ici
 
-const matLignes = new THREE.ShaderMaterial({
-  uniforms: uniformes, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-  vertexShader: vertexCommun + `void main(){ vec3 p = calcul(); gl_Position = projectionMatrix * modelViewMatrix * vec4(p,1.0); }`,
-  fragmentShader: `uniform float uForme; varying float vAlpha; varying float vLum; varying float vF;
-    // un morceau de ligne n'apparaît que quand ses deux points sont arrivés (sinon : gribouillis)
-    void main(){ float a = vAlpha * smoothstep(0.93, 1.0, vF) * (0.35 + 0.9 * vLum * vLum);
-      gl_FragColor = vec4(vec3(0.82, 0.92, 1.0) * (0.7 + 0.8 * vLum), a); }`,
+      // tete : tourne autour du cou (le bas du cou et les epaules restent fixes)
+      float wTete = smoothstep(980.0, 600.0, p.y);         // transition longue : le cou se plie sans cassure
+      q = COU + tourne(q - COU, -uTete * wTete);
+      q.y += uTeteY * wTete;
+
+      // bouche : ouverture douce, plus grande au centre qu'aux coins (forme d'amande), sans coupure nette.
+      // La levre inferieure et le menton descendent ensemble, la transition est progressive.
+      float ouverture = uBouche * 11.0;
+      float ligne = 427.0 + (q.x - 165.0) * 0.06;          // ligne entre les levres (legerement inclinee)
+      float dessous = q.y - ligne;
+      float amande = smoothstep(150.0, 200.0, q.x) * smoothstep(262.0, 212.0, q.x);   // 0 aux coins, 1 au centre
+      float profil = 0.25 + 0.75 * amande;
+      float wBas = smoothstep(-3.0, 6.0, dessous) * smoothstep(130.0, 40.0, dessous) * smoothstep(340.0, 250.0, q.x);
+      float wHaut = smoothstep(-22.0, -2.0, dessous) * (1.0 - smoothstep(-2.0, 2.0, dessous));
+      q.y -= ouverture * profil * wBas;                     // levre inferieure + menton descendent
+      q.y += ouverture * 0.18 * amande * wHaut;             // la levre superieure remonte a peine
+
+      vec3 c = texture2D(uImage, clamp(vec2(q.x, TAILLE.y - q.y) / TAILLE, 0.001, 0.999)).rgb;
+      // interieur de la bouche : ombre douce en amande entre les levres
+      float h = ouverture * amande;
+      float interieur = amande * smoothstep(-1.5, 1.5, dessous) * (1.0 - smoothstep(h * 0.35, h * 0.9 + 0.5, dessous)) * smoothstep(0.5, 3.0, ouverture);
+      c *= 1.0 - 0.9 * interieur;
+      float lum = dot(c, vec3(0.299, 0.587, 0.114));
+
+      // lumiere qui parcourt les lignes fines (crane et cou) : seulement sur les traits clairs
+      float trait = smoothstep(0.35, 0.8, lum);
+      float onde = 0.5 + 0.5 * sin((q.x * 0.6 + q.y * 1.0) * 0.012 - uTemps * (1.5 + uBalayage * 5.0));
+      onde = pow(onde, 6.0);
+      c += vec3(0.85, 0.92, 1.0) * trait * onde * (0.35 + uPense * 0.6);
+
+      // points de la dispersion (a droite) : scintillent
+      float zone = smoothstep(420.0, 520.0, q.x) * smoothstep(250.0, 380.0, q.y);
+      float s = hasard(floor(q / 3.0));
+      c *= 1.0 + zone * trait * (0.6 * sin(uTemps * (2.0 + s * 6.0) + s * 40.0));
+
+      // la souris eclaire doucement la ou elle passe
+      float d = length(q - uSouris);
+      c += vec3(0.7, 0.85, 1.0) * trait * exp(-d * d / 9000.0) * 0.5;
+
+      gl_FragColor = vec4(c * uLueur, 1.0);
+    }`,
 });
+const plan = new THREE.Mesh(new THREE.PlaneGeometry(2 * RATIO, 2), matImage);
+scene.add(plan);
 
-const matPoints = new THREE.ShaderMaterial({
-  uniforms: uniformes, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-  vertexShader: vertexCommun + `void main(){ vec3 p = calcul();
-      vec4 mv = modelViewMatrix * vec4(p,1.0); gl_Position = projectionMatrix * mv;
-      gl_PointSize = uTaille * (1.6 + 3.0 * step(0.93, aAlea)) * (3.4 / -mv.z); }`,
-  fragmentShader: `uniform float uTemps, uForme; varying float vAlpha; varying float vLum; varying float vF;
-    void main(){ vec2 c = gl_PointCoord - 0.5; float d = length(c); if (d > 0.5) discard;
-      float nuage = 0.10 * (1.0 - uForme);   // en veille : presque invisible
-      float a = (vAlpha * 0.35 * vLum + nuage) * (1.0 - d * 2.0);
-      gl_FragColor = vec4(vec3(0.85, 0.95, 1.0) * (0.7 + 0.5 * vLum), a); }`,
+// ------------------------------------------------------------------ particules qui s'échappent de la nuque (comme sur l'image)
+const N = 520;
+const pos = new Float32Array(N * 3), vit = new Float32Array(N * 2), vie = new Float32Array(N), taille = new Float32Array(N);
+const geoP = new THREE.BufferGeometry();
+geoP.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+geoP.setAttribute("aVie", new THREE.BufferAttribute(vie, 1));
+geoP.setAttribute("aTaille", new THREE.BufferAttribute(taille, 1));
+const matP = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { uPixel: { value: 1 }, uLueur: uniformes.uLueur },
+  vertexShader: `attribute float aVie, aTaille; uniform float uPixel; varying float vVie;
+    void main(){ vVie = aVie; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = aTaille * uPixel; }`,
+  // petits traits horizontaux, comme les éclats de l'image
+  fragmentShader: `uniform float uLueur; varying float vVie;
+    void main(){ vec2 d = abs(gl_PointCoord - 0.5); if (d.y > 0.12 || d.x > 0.5) discard;
+      float a = smoothstep(0.0, 0.3, vVie) * (1.0 - d.x * 1.6);
+      gl_FragColor = vec4(vec3(1.0) * a * uLueur, a); }`,
 });
+const nuage = new THREE.Points(geoP, matP); nuage.frustumCulled = false; nuage.position.z = 0.1;
+scene.add(nuage);
+// zone d'émission : arrière de la tête, nuque et cou (pixels de l'image)
+function emettre(i) {
+  const k = Math.random();
+  const x = 480 + Math.random() * 110, y = 400 + k * 440;
+  const s = versScene(x - (y > 600 ? (y - 600) * 0.35 : 0), y);
+  pos[i * 3] = s.x; pos[i * 3 + 1] = s.y; pos[i * 3 + 2] = 0;
+  vit[i * 2] = 0.03 + Math.random() * 0.07; vit[i * 2 + 1] = (Math.random() - 0.6) * 0.03;
+  vie[i] = 0.4 + Math.random() * 0.6; taille[i] = 1.5 + Math.random() * 4.5;
+}
+for (let i = 0; i < N; i++) { emettre(i); vie[i] *= Math.random(); }
 
-// ------------------------------------------------------------------ états
+// ------------------------------------------------------------------ états (venant de sarah.py par Home Assistant)
 const ETATS = ["veille", "ecoute", "pense", "parle"];
-let etat = "veille";
-let cibleForme = 0, voixSimulee = false, enveloppe = null, debutVoix = 0, minuteurVeille = null;
-
+let etat = "veille", enveloppe = null, debutVoix = 0, voixSimulee = false, minuteur = null;
 function changerEtat(nouvel, donnees = {}) {
   if (!ETATS.includes(nouvel)) return;
-  clearTimeout(minuteurVeille);
-  if (nouvel === "veille" && etat !== "veille") {
-    // après la réponse, elle reste visible ~4 s avant de se défaire
-    minuteurVeille = setTimeout(() => appliquer("veille", {}), donnees.immediat ? 0 : 4000);
-    appliquer("apres", {});
+  clearTimeout(minuteur);
+  if (nouvel === "veille" && etat !== "veille") {   // elle reste attentive ~4 s après sa réponse
+    etat = "apres";
+    minuteur = setTimeout(() => { etat = "veille"; majBoutons("veille"); }, donnees.immediat ? 0 : 4000);
     return;
   }
-  appliquer(nouvel, donnees);
-}
-
-function appliquer(nouvel, donnees) {
-  etat = nouvel === "apres" ? "apres" : nouvel;
-  cibleForme = nouvel === "veille" ? 0 : 1;
+  etat = nouvel;
   if (nouvel === "parle") {
-    if (donnees.enveloppe && donnees.enveloppe.length) {
-      enveloppe = donnees.enveloppe;                       // vraie voix : courbe de volume envoyée par sarah.py
-      debutVoix = donnees.debut ? donnees.debut : Date.now();
-      voixSimulee = false;
-    } else if (!enveloppe) {
-      voixSimulee = true;                                  // pas de courbe : animation simulée
-    }
-  } else {
-    enveloppe = null; voixSimulee = false;
-  }
-  document.querySelectorAll("#debug button").forEach(b => b.classList.toggle("actif", b.dataset.etat === nouvel));
-  window.dispatchEvent(new CustomEvent("sarah-etat", { detail: nouvel }));
+    if (donnees.enveloppe && donnees.enveloppe.length) { enveloppe = donnees.enveloppe; debutVoix = donnees.debut || Date.now(); voixSimulee = false; }
+    else if (!enveloppe) voixSimulee = true;
+  } else { enveloppe = null; voixSimulee = false; }
+  majBoutons(nouvel);
 }
-
 function niveauVoix(t) {
   if (etat !== "parle") return 0;
-  if (enveloppe) {
-    const i = Math.floor((Date.now() - debutVoix) / 1000 * 30);
-    return i >= 0 && i < enveloppe.length ? Math.min(1, enveloppe[i]) : 0;
-  }
-  if (voixSimulee) return 0.5 + 0.5 * Math.abs(Math.sin(t * 9.0) * Math.sin(t * 3.7));
+  if (enveloppe) { const i = Math.floor((Date.now() - debutVoix) / 1000 * 30); return i >= 0 && i < enveloppe.length ? Math.min(1, enveloppe[i]) : 0; }
+  if (voixSimulee) return Math.max(0, Math.sin(t * 11) * Math.sin(t * 3.3) * 0.9 + 0.15);
   return 0;
 }
 
-// ------------------------------------------------------------------ boucle
-let forme = 0, voix = 0, pense = 0, ecoute = 0;
+// ------------------------------------------------------------------ souris
+const souris = new THREE.Vector2(-9, -9);   // coordonnées de la scène
+let derniereSouris = -99;
 const horloge = new THREE.Clock();
+addEventListener("pointermove", (e) => {
+  const a = innerWidth / innerHeight;
+  souris.set(((e.clientX / innerWidth) * 2 - 1) * a, -(e.clientY / innerHeight) * 2 + 1);
+  derniereSouris = horloge.elapsedTime;
+});
+addEventListener("pointerleave", () => souris.set(-9, -9));
+
+// ------------------------------------------------------------------ boucle
+const DEVANT = -0.26;   // rotation de la tete pour regarder droit devant (radians)
+let voix = 0, tete = 0, teteY = 0, lueur = 0, pense = 0;   // en veille elle est invisible : elle apparaît quand on l appelle
 function boucle() {
   requestAnimationFrame(boucle);
   const dt = Math.min(0.05, horloge.getDelta()), t = horloge.elapsedTime;
-  // rassemblement rapide à l'appel, dispersion plus lente
-  forme += (cibleForme - forme) * (cibleForme > forme ? 1.8 : 0.9) * dt;
   const v = niveauVoix(t);
-  voix += (v - voix) * (v > voix ? 0.6 : 0.25);
-  pense += ((etat === "pense" ? 1 : 0) - pense) * 2.0 * dt;
-  ecoute += ((etat === "ecoute" ? 1 : 0) - ecoute) * 2.0 * dt;
-  Object.assign(uniformes, {});
-  uniformes.uTemps.value = t; uniformes.uForme.value = forme; uniformes.uVoix.value = voix;
-  uniformes.uPense.value = pense; uniformes.uEcoute.value = ecoute;
-  // la tête flotte et regarde légèrement vers le haut, comme sur l'image
-  tete.rotation.y = -0.12 + 0.06 * Math.sin(t * 0.25);
-  tete.rotation.x = -0.06 + 0.02 * Math.sin(t * 0.33);
-  tete.position.y = 0.02 * Math.sin(t * 0.6);
+  voix += (v - voix) * Math.min(1, dt * (v > voix ? 30 : 14));
+
+  // tête : respiration lente ; se lève quand elle écoute ; se baisse quand elle réfléchit ; petits hochements en parlant
+  let cible = Math.sin(t * 0.45) * 0.012 + Math.sin(t * 0.21) * 0.008, cibleY = Math.sin(t * 0.9) * 2;
+  // quand on l'appelle, elle baisse le menton et regarde droit devant elle (vers toi)
+  if (etat !== "veille" || document.body.classList.contains("debug")) cible += DEVANT;
+  if (etat === "pense") cible += 0.025;
+  if (etat === "parle") cible += voix * 0.012 * Math.sin(t * 5.5);
+  tete += (cible - tete) * Math.min(1, dt * 2.5); teteY += (cibleY - teteY) * Math.min(1, dt * 2);
+  pense += ((etat === "pense" ? 1 : 0) - pense) * Math.min(1, dt * 2);
+  const cibleL = { veille: (document.body.classList.contains("debug") ? 0.95 : 0), ecoute: 1.15, pense: 1.05, parle: 1.08, apres: 1.08 }[etat] + voix * 0.12;
+  lueur += (cibleL - lueur) * Math.min(1, dt * 2.5);
+
+  uniformes.uTemps.value = t; uniformes.uBouche.value = Math.min(1, voix * 1.3);
+  uniformes.uTete.value = tete; uniformes.uTeteY.value = teteY; uniformes.uLueur.value = lueur; uniformes.uPense.value = pense;
+  uniformes.uBalayage.value = etat === "pense" ? 1 : etat === "parle" ? 0.5 + voix : 0.2;
+  const actif = t - derniereSouris < 3;
+  uniformes.uSouris.value.set(actif ? (souris.x / (2 * RATIO) + 0.5) * L : -999, actif ? (0.5 - souris.y / 2) * H : -999);
+
+  // particules : dérivent vers la droite ; plus vite et plus nombreuses quand elle parle ou réfléchit ; fuient la souris
+  matP.uniforms.uPixel.value = rendu.getPixelRatio() * innerHeight / 1100;
+  const vitesse = 0.6 + voix * 1.5 + pense * 0.8 + (etat === "ecoute" ? 0.4 : 0);
+  for (let i = 0; i < N; i++) {
+    vie[i] -= dt * 0.18 * vitesse;
+    if (vie[i] <= 0) { emettre(i); continue; }
+    let x = pos[i * 3], y = pos[i * 3 + 1];
+    x += vit[i * 2] * dt * vitesse; y += vit[i * 2 + 1] * dt * vitesse + (pense ? Math.sin(t * 2 + i) * 0.01 * pense * dt * 10 : 0);
+    if (actif) {
+      const dx = x - souris.x, dy = y - souris.y, d2 = dx * dx + dy * dy;
+      if (d2 < 0.04) { const k = (0.04 - d2) * 6 * dt; x += dx * k * 10; y += dy * k * 10; }
+    }
+    pos[i * 3] = x; pos[i * 3 + 1] = y;
+  }
+  geoP.attributes.position.needsUpdate = true; geoP.attributes.aVie.needsUpdate = true; geoP.attributes.aTaille.needsUpdate = true;
+
   rendu.render(scene, camera);
 }
 
 // ------------------------------------------------------------------ démarrage
-(async () => {
-  const img = await chargerImage(IMAGE);
-  const geo = construire(analyserPhoto(img));
-  tete.add(new THREE.LineSegments(geo.lignes, matLignes));
-  tete.add(new THREE.Points(geo.points, matPoints));
-  window.sarah = { changerEtat, get etat() { return etat; }, get forme() { return forme; } };
+new THREE.TextureLoader().load(IMAGE, (tex) => {
+  tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+  uniformes.uImage.value = tex;
+  window.sarah = { changerEtat, get etat() { return etat; } };
   boucle();
-})();
+});
 
-// ------------------------------------------------------------------ connexion à Home Assistant
-// Écoute les événements « sarah_etat » envoyés par sarah.py : { etat, enveloppe?, debut? }
+// ------------------------------------------------------------------ connexion à Home Assistant (événements « sarah_etat »)
 const indicateur = document.getElementById("connexion");
 let essai = 0;
-
-async function lireConfig() {
-  const r = await fetch("./config.json", { cache: "no-store" });
-  if (!r.ok) throw new Error("config.json introuvable");
-  return r.json();
-}
-
 async function connecter() {
   let cfg;
-  try { cfg = await lireConfig(); }
-  catch (e) { indicateur.style.display = "flex"; indicateur.querySelector("span").textContent = "config.json manquant"; return; }
-  const url = cfg.ha_url.replace(/^http/, "ws").replace(/\/$/, "") + "/api/websocket";
-  const ws = new WebSocket(url);
-  let idCommande = 1;
+  try { cfg = await (await fetch("./config.json", { cache: "no-store" })).json(); }
+  catch { indicateur.style.display = "flex"; indicateur.querySelector("span").textContent = "config.json manquant"; return; }
+  const ws = new WebSocket(cfg.ha_url.replace(/^http/, "ws").replace(/\/$/, "") + "/api/websocket");
   ws.onmessage = (m) => {
     const msg = JSON.parse(m.data);
     if (msg.type === "auth_required") ws.send(JSON.stringify({ type: "auth", access_token: cfg.token }));
     else if (msg.type === "auth_invalid") { indicateur.querySelector("span").textContent = "jeton refusé"; ws.close(); }
-    else if (msg.type === "auth_ok") {
-      essai = 0;
-      indicateur.style.display = "none";
-      ws.send(JSON.stringify({ id: idCommande++, type: "subscribe_events", event_type: "sarah_etat" }));
-    } else if (msg.type === "event" && msg.event.event_type === "sarah_etat") {
-      const d = msg.event.data || {};
-      changerEtat(d.etat, d);
-    }
+    else if (msg.type === "auth_ok") { essai = 0; indicateur.style.display = "none"; ws.send(JSON.stringify({ id: 1, type: "subscribe_events", event_type: "sarah_etat" })); }
+    else if (msg.type === "event" && msg.event.event_type === "sarah_etat") { const dd = msg.event.data || {}; changerEtat(dd.etat, dd); }
   };
   ws.onclose = () => {
-    // Home Assistant redémarre ou réseau coupé : petit indicateur et nouvel essai (1 s, 2 s, 4 s… max 15 s)
     indicateur.style.display = "flex";
-    if (indicateur.querySelector("span").textContent !== "jeton refusé")
-      indicateur.querySelector("span").textContent = "Home Assistant déconnecté";
+    if (indicateur.querySelector("span").textContent !== "jeton refusé") indicateur.querySelector("span").textContent = "Home Assistant déconnecté";
     setTimeout(connecter, Math.min(15000, 1000 * 2 ** essai++));
   };
   ws.onerror = () => ws.close();
@@ -297,7 +242,6 @@ async function connecter() {
 connecter();
 
 // ------------------------------------------------------------------ mode debug (touche D)
-addEventListener("keydown", e => { if (e.key === "d" || e.key === "D") document.body.classList.toggle("debug"); });
-document.querySelectorAll("#debug button").forEach(b => b.addEventListener("click", () => changerEtat(b.dataset.etat, { immediat: true })));
-
-export { changerEtat };
+function majBoutons(e) { document.querySelectorAll("#debug button").forEach((b) => b.classList.toggle("actif", b.dataset.etat === e)); }
+addEventListener("keydown", (e) => { if (e.key === "d" || e.key === "D") document.body.classList.toggle("debug"); });
+document.querySelectorAll("#debug button").forEach((b) => b.addEventListener("click", () => changerEtat(b.dataset.etat, { immediat: true })));

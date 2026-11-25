@@ -130,6 +130,55 @@ def lire(cle):
         return etat[cle]
 
 
+# ------------------------------------------------ apparition de l'hologramme
+# La fenêtre plein écran de l'hologramme (Edge en kiosque) est cachée quand Sarah dort.
+# Quand on l'appelle, elle apparaît au premier plan ; après sa réponse elle s'efface (la page
+# fait un fondu au noir), puis la fenêtre est cachée et on retrouve son bureau.
+TITRE_HOLOGRAMME = "Sarah — hologramme"
+DELAI_DISPARITION = 6.0  # s après le retour en veille (4 s d'attente + fondu de la page)
+
+
+def surveiller_hologramme():
+    u32 = ctypes.windll.user32
+    from ctypes import wintypes
+    PROTO = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    fenetre = {"h": None}
+
+    def trouver():
+        trouve = []
+
+        def rappel(h, _):
+            n = u32.GetWindowTextLengthW(h)
+            if n:
+                b = ctypes.create_unicode_buffer(n + 1)
+                u32.GetWindowTextW(h, b, n + 1)
+                if b.value.startswith(TITRE_HOLOGRAMME):
+                    trouve.append(h)
+                    return False
+            return True
+        u32.EnumWindows(PROTO(rappel), 0)
+        return trouve[0] if trouve else None
+
+    while True:
+        try:
+            h = fenetre["h"]
+            if not h or not u32.IsWindow(h):
+                h = fenetre["h"] = trouver()
+            if h:
+                voulu = lire("mode") != "veille" or time.time() - lire("depuis") < DELAI_DISPARITION
+                visible = bool(u32.IsWindowVisible(h))
+                if voulu and not visible:
+                    u32.ShowWindow(h, 5)  # SW_SHOW
+                    u32.SetWindowPos(h, -1, 0, 0, 0, 0, 0x0001 | 0x0002)  # au premier plan, par-dessus tout
+                    u32.SetForegroundWindow(h)
+                elif not voulu and visible:
+                    u32.SetWindowPos(h, -2, 0, 0, 0, 0, 0x0001 | 0x0002)  # n'est plus « toujours devant »
+                    u32.ShowWindow(h, 0)  # SW_HIDE
+        except Exception as e:  # une erreur ici ne doit jamais arrêter Sarah
+            print(f"   hologramme (fenêtre) : {e}", flush=True)
+        time.sleep(0.15 if fenetre["h"] else 2.0)
+
+
 # ----------------------------------------------------------------- micro
 niveau_micro = {"v": 0.0, "bruit": 200.0}
 
@@ -180,12 +229,12 @@ async def demander_a_home_assistant(token, debut_audio, bruit, conversation_id):
             # Détection locale de fin de phrase (plus rapide que d'attendre Home Assistant)
             seuil_parole = max(bruit * 2.5, 250)
             seuil_silence = max(bruit * 1.6, 180)
-            a_parle = any(niveau(b) > seuil_parole for b in debut_audio[-5:])
+            a_parle = any(niveau(b) > seuil_parole for b in debut_audio[-3:])
             silence = 0
             debut = time.time()
             while not envoi_fini.is_set():
                 ecoule = time.time() - debut
-                if ecoule > 8 or (not a_parle and ecoule > 4):
+                if ecoule > 10 or (not a_parle and ecoule > 5):  # 5 s pour commencer à parler
                     break
                 try:
                     bloc = audio_q.get(timeout=0.05)
@@ -589,6 +638,11 @@ def boucle_ecoute():
         changer("ecoute", texte_moi="", texte_sarah="")
         volume_musique(MUSIQUE_PENDANT_SARAH)  # la musique baisse pendant qu'on se parle
         debut_audio = list(recents)[-8:]  # « Sarah » + le début de la demande
+        # Si tu fais une pause après « Sarah » (le temps de la voir apparaître), on n'envoie pas ce
+        # morceau : Home Assistant y entendrait « Sarah » suivi d'un silence et couperait l'écoute
+        # avant même que tu poses ta question.
+        if not any(niveau(b) > max(bruit * 2.5, 250) for b in debut_audio[-3:]):
+            debut_audio = []
         recents.clear()
         if time.time() - conv_heure > 300:
             conv_id = None
@@ -727,6 +781,8 @@ def main():
     threading.Thread(target=lambda: asyncio.run(ecouter_commandes_pc(jeton)), daemon=True).start()
     threading.Thread(target=lambda: asyncio.run(boucle_publication(jeton)), daemon=True).start()
     threading.Thread(target=preparer_confirmations, args=(jeton,), daemon=True).start()
+    if AFFICHAGE == "hologramme":
+        threading.Thread(target=surveiller_hologramme, daemon=True).start()
 
     horloge = pygame.time.Clock()
     visible = False
