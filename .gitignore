@@ -9,3 +9,8 @@
 *.key
 .env
 secrets.yaml
+
+# Programme Sarah
+sarah-desktop/token.txt
+sarah-desktop/modeles/
+sarah-desktop/visage.jpg

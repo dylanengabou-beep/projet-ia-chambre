@@ -1,0 +1,5 @@
+vosk>=0.3.45
+sounddevice>=0.5
+pygame>=2.6
+websockets>=13
+numpy>=2.0
