@@ -1,4 +1,4 @@
-﻿# 🏠🤖 Une IA pour ma chambre
+# 🏠🤖 Une IA pour ma chambre
 
 Projet personnel : une **IA avec qui je peux parler**, qui **contrôle ma chambre** (lumières, prises) et qui servira de **système de sécurité** (caméra, capteurs, alertes sur mon téléphone).
 
@@ -61,6 +61,8 @@ Chaque partie contient les étapes, les captures d'écran, et surtout **les prob
 - [x] Voix réaliste (ElevenLabs)
 - [x] LED de ma chambre contrôlées à la voix (Govee)
 - [x] Mot de réveil « Hey Sarah » et visage animé en plein écran
+- [x] Volume du PC contrôlé à la voix
+- [x] Démarrage automatique avec Windows
 - [ ] Ampoules et prises connectées (TP-Link Tapo)
 - [ ] Boîtier dédié Home Assistant Green (24 h/24)
 - [ ] Micro Home Assistant Voice

@@ -13,6 +13,7 @@ import io
 import json
 import math
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -172,6 +173,41 @@ def telecharger(url):
 
 
 # ------------------------------------------------------- boucle d'écoute
+# ------------------------------------------------ actions sur le PC (volume)
+VOLUME_ACTIONS = {"niveau", "monter", "baisser", "muet", "son"}  # seules actions autorisées
+
+
+def regler_volume(action, valeur):
+    if action not in VOLUME_ACTIONS:
+        print(f"   action de volume refusée : {action!r}", flush=True)
+        return
+    valeur = max(0, min(100, int(valeur or 10)))
+    r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                        str(ICI / "volume.ps1"), "-Action", action, "-Valeur", str(valeur)],
+                       capture_output=True, text=True, creationflags=0x08000000)  # sans fenêtre
+    print(f"   volume : {action} {valeur} -> {r.stdout.strip()}", flush=True)
+
+
+async def ecouter_commandes_pc(token):
+    """Reçoit les commandes envoyées par Home Assistant (événement « sarah_pc_volume »)."""
+    ws_url = HA_URL.replace("http", "ws", 1) + "/api/websocket"
+    while True:
+        try:
+            async with websockets.connect(ws_url) as ws:
+                await ws.recv()
+                await ws.send(json.dumps({"type": "auth", "access_token": token}))
+                await ws.recv()
+                await ws.send(json.dumps({"id": 1, "type": "subscribe_events", "event_type": "sarah_pc_volume"}))
+                async for brut in ws:
+                    msg = json.loads(brut)
+                    if msg.get("type") == "event":
+                        d = msg["event"].get("data") or {}
+                        await asyncio.to_thread(regler_volume, str(d.get("action", "")), d.get("valeur", 10))
+        except Exception as e:  # Home Assistant redémarre, réseau coupé… on réessaie
+            print(f"   commandes PC : connexion perdue ({e}), nouvel essai dans 10 s", flush=True)
+            await asyncio.sleep(10)
+
+
 def boucle_ecoute():
     SetLogLevel(-1)
     token = TOKEN_FICHIER.read_text(encoding="utf-8-sig").strip()
@@ -313,6 +349,8 @@ def main():
                              device=MICRO, callback=rappel_micro)
     flux.start()
     threading.Thread(target=boucle_ecoute, daemon=True).start()
+    jeton = TOKEN_FICHIER.read_text(encoding="utf-8-sig").strip()
+    threading.Thread(target=lambda: asyncio.run(ecouter_commandes_pc(jeton)), daemon=True).start()
 
     horloge = pygame.time.Clock()
     visible = False

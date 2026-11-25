@@ -45,6 +45,26 @@ J'ai aussi créé un tableau de bord **« Sarah »** dans Home Assistant : quand
 ## Installation
 Voir [`sarah-desktop/README.md`](../sarah-desktop/README.md).
 
+## Contrôle du volume du PC à la voix
+« Sarah, mets le volume à 25 % », « Sarah, monte un peu le son », « Sarah, coupe le son »…
+
+```
+Claude ──► script Home Assistant « Volume du PC » (action + valeur)
+              │  événement « sarah_pc_volume »
+              ▼
+sarah.py (abonné aux événements) ──► volume.ps1 ──► volume de Windows
+```
+
+- Dans Home Assistant, le script **Volume du PC** a deux champs : `action` (niveau, monter, baisser, muet, son) et `valeur` (0 à 100 %). Il est exposé à l'assistant, donc Claude sait l'utiliser tout seul.
+- Le script ne fait qu'envoyer un **événement**. C'est `sarah.py`, sur le PC, qui le reçoit et appelle [`volume.ps1`](../sarah-desktop/volume.ps1).
+- **Sécurité :** seules ces 5 actions sont acceptées, et la valeur est bornée entre 0 et 100. Sarah ne peut rien faire d'autre sur le PC.
+
+| Phrase | Réponse de Sarah | Volume réel de Windows |
+|---|---|---|
+| « Mets le volume du PC à 25 % » | « C'est fait, le volume du PC est réglé à 25 %. » (1,4 s) | 25 % |
+| « Monte un peu le son » | « C'est fait, j'ai monté le son du PC de 10 points. » (2,0 s) | 35 % |
+| « Remets le volume à 40 % » | « C'est fait, le volume du PC de la chambre est réglé à 40 %. » (1,1 s) | 40 % |
+
 ## Démarrage automatique
 À l'ouverture de ma session Windows, [`scripts/demarrer-sarah.ps1`](../scripts/demarrer-sarah.ps1) démarre la VM Home Assistant sans fenêtre, le relais `localhost:8080`, puis Sarah. Je n'ai plus rien à lancer : il suffit de dire « Sarah ».
 
