@@ -48,6 +48,7 @@ Je dis **« Hey Sarah, mets les LED en bleu »** : son visage apparaît en plein
 
 Chaque partie contient les étapes, les captures d'écran, et surtout **les problèmes rencontrés avec leur solution** (22 problèmes au total).
 
+- 📄 Toute la documentation en Word : [`docs/Documentation_Projet_IA_Chambre.docx`](docs/Documentation_Projet_IA_Chambre.docx) (générée par [`scripts/generer-word.py`](scripts/generer-word.py))
 - Script pour recréer la VM : [`scripts/creer-vm-homeassistant.ps1`](scripts/creer-vm-homeassistant.ps1)
 - Relais localhost (micro dans Chrome) : [`scripts/relais-localhost.py`](scripts/relais-localhost.py)
 - Programme Sarah : [`sarah-desktop/`](sarah-desktop/)
