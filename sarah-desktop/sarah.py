@@ -50,6 +50,27 @@ verrou = threading.Lock()
 audio_q: "queue.Queue[bytes]" = queue.Queue()
 a_jouer: "queue.Queue[bytes]" = queue.Queue()
 fin_parole = threading.Event()
+reveil_clavier = threading.Event()  # mis par le raccourci clavier
+
+
+def ecouter_raccourci():
+    """Raccourci clavier global (Ctrl+Espace par défaut) pour appeler Sarah quand la musique couvre la voix."""
+    from ctypes import wintypes
+    u32 = ctypes.windll.user32
+    touches = {"espace": 0x20, "s": 0x53, "pause": 0x13}
+    mods = {"ctrl": 0x2, "alt": 0x1, "maj": 0x4, "win": 0x8}
+    combinaison = [p.strip().lower() for p in cfg.get("sarah", "raccourci", fallback="ctrl+espace").split("+")]
+    mod = sum(mods.get(p, 0) for p in combinaison[:-1]) | 0x4000  # 0x4000 : pas de répétition si on garde appuyé
+    if not u32.RegisterHotKey(None, 1, mod, touches.get(combinaison[-1], 0x20)):
+        print("   raccourci clavier indisponible (déjà utilisé par une autre application)", flush=True)
+        return
+    print(f"   raccourci clavier : {'+'.join(combinaison)}", flush=True)
+    msg = wintypes.MSG()
+    while u32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
+        if msg.message == 0x0312:  # WM_HOTKEY
+            if lire("mode") == "veille":
+                reveil_clavier.set()
+                audio_q.put(b"\x00\x00" * BLOC)  # réveille tout de suite la boucle d'écoute
 
 
 def changer(mode, **textes):
@@ -475,12 +496,18 @@ def boucle_ecoute():
         n = niveau(bloc)
         if n < bruit * 3:
             bruit = 0.97 * bruit + 0.03 * n
-        if time.time() < sourd_jusqua:
-            continue
-        fini = rec.AcceptWaveform(bloc)
-        texte = json.loads(rec.Result() if fini else rec.PartialResult()).get("text" if fini else "partial", "")
-        if not any(m in texte.split() for m in MOTS_REVEIL):
-            continue
+        if reveil_clavier.is_set():  # Ctrl+Espace : réveil garanti, même avec la musique forte
+            reveil_clavier.clear()
+            texte = "(raccourci clavier)"
+            recents.clear()  # l'audio d'avant le raccourci n'est pas la demande
+            bruit = min(bruit, 150.0)  # le bruit mesuré pendant la musique forte rendrait ma voix « trop faible »
+        else:
+            if time.time() < sourd_jusqua:
+                continue
+            fini = rec.AcceptWaveform(bloc)
+            texte = json.loads(rec.Result() if fini else rec.PartialResult()).get("text" if fini else "partial", "")
+            if not any(m in texte.split() for m in MOTS_REVEIL):
+                continue
         rec.Reset()
         print(f"   réveillée par : « {texte} »", flush=True)
         # --- réveil ---
@@ -499,8 +526,12 @@ def boucle_ecoute():
         if r.get("conversation_id"):
             conv_id, conv_heure = r["conversation_id"], time.time()
         if r["erreur"] and not r["sarah"]:
-            changer("parle", texte_sarah="Désolée, je n'ai pas réussi : " + str(r["erreur"]))
-            time.sleep(4)
+            if "no text recognized" in str(r["erreur"]).lower() or "stt-no-text" in str(r["erreur"]).lower():
+                changer("parle", texte_sarah="Je ne t'ai pas entendu.")  # rien dit après le réveil
+                time.sleep(1.5)
+            else:
+                changer("parle", texte_sarah="Désolée, je n'ai pas réussi : " + str(r["erreur"]))
+                time.sleep(4)
         elif r["sarah"]:
             changer("parle", texte_moi=r["moi"], texte_sarah=r["sarah"])
             if r["deja_dit"] and "?" not in r["sarah"]:
@@ -562,7 +593,23 @@ def texte_centre(ecran, police, txt, y, couleur):
         ecran.blit(s, s.get_rect(center=(ecran.get_width() // 2, y + i * (police.get_height() + 6))))
 
 
+_verrou_instance = None
+
+
+def une_seule_sarah():
+    """Une seule Sarah à la fois : deux programmes se disputaient le micro et lançaient la musique deux fois."""
+    import socket
+    global _verrou_instance
+    _verrou_instance = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        _verrou_instance.bind(("127.0.0.1", 47853))  # port réservé tant que cette Sarah tourne
+    except OSError:
+        print("Sarah tourne déjà : cette deuxième copie s'arrête.", flush=True)
+        sys.exit(0)
+
+
 def main():
+    une_seule_sarah()
     if not TOKEN_FICHIER.exists() or not TOKEN_FICHIER.read_text(encoding="utf-8-sig").strip():
         print("Il manque token.txt : crée un jeton longue durée dans Home Assistant (Profil → Sécurité).")
         sys.exit(1)
@@ -600,6 +647,7 @@ def main():
                              device=MICRO, callback=rappel_micro)
     flux.start()
     threading.Thread(target=boucle_ecoute, daemon=True).start()
+    threading.Thread(target=ecouter_raccourci, daemon=True).start()
     jeton = TOKEN_FICHIER.read_text(encoding="utf-8-sig").strip()
     threading.Thread(target=lambda: asyncio.run(ecouter_commandes_pc(jeton)), daemon=True).start()
     threading.Thread(target=preparer_confirmations, args=(jeton,), daemon=True).start()

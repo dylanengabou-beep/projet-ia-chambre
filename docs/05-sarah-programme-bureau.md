@@ -173,6 +173,24 @@ sarah.py ──► API Web Spotify : recherche (spotify_recherche.py) ──► 
 - **Solution :** titre → `music` ; artiste → `artist` ; album → `album` ; playlist → `playlist`.
 - **Autre détail :** juste après avoir choisi l'appareil « JORIS », Home Assistant ne propose pas encore la lecture. Le programme actualise le lecteur jusqu'à ce que la lecture soit possible (environ 1 à 2 s).
 
+### Problème 29 — Après la musique, elle ne répondait plus
+- **Cause 1 :** **deux Sarah** tournaient en même temps (lancées à 8 secondes d'écart). Elles se disputaient le micro et lançaient la musique deux fois.
+- **Solution :** au démarrage, Sarah réserve un port local (127.0.0.1:47853). Une deuxième copie voit qu'il est pris et s'arrête toute seule (« Sarah tourne déjà »).
+- **Cause 2 :** la musique qui sort des enceintes **couvre ma voix** pour le micro du portable.
+
+### Problème 30 — L'entendre pendant la musique (en cours)
+- **Mesures** (je dis « Sarah » 5 fois pendant la musique) :
+
+| Essai | « Sarah » entendus |
+|---|---|
+| Micro du portable, 1er morceau | 3 / 5 |
+| Micro de la webcam C920, 1er morceau | 3 / 5 |
+| Micro du portable, morceau plus fort | 0 / 5 |
+
+- **Solution de secours :** le raccourci **Ctrl + Espace** réveille Sarah à coup sûr. La musique baisse aussitôt et elle écoute (réglable dans `config.ini`, ligne `raccourci`).
+- **Annulation d'écho logicielle essayée :** le son envoyé aux enceintes peut être lu (bibliothèque PyAudioWPatch, en « loopback »), mais il ne ressemble qu'à **3 %** à ce que capte le micro du portable. Le micro Intel traite déjà le son (réduction de bruit), donc un filtre linéaire n'enlève rien (0 dB).
+- **Pistes pour la suite :** refaire l'essai avec le micro de la C920 (son plus brut), plafonner le volume de la musique, ou un micro avec **annulation d'écho matérielle** (Home Assistant Voice, haut-parleur de conférence USB).
+
 ---
 
 ## Ce que j'ai appris
