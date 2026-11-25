@@ -11,7 +11,9 @@ import sys
 
 HA_HOTE = sys.argv[1] if len(sys.argv) > 1 else "192.168.2.72"
 HA_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 80
-ECOUTE = ("127.0.0.1", 8080)
+# IPv4 ET IPv6 : sous Windows, « localhost » est d'abord essayé en IPv6 (::1).
+# N'écouter qu'en IPv4 faisait attendre 2 secondes chaque requête avant le repli en IPv4.
+ECOUTE = (["127.0.0.1", "::1"], 8080)
 
 
 async def copier(lecteur, ecrivain):

@@ -17,8 +17,10 @@ import subprocess
 import sys
 import threading
 import time
+import re
 import urllib.request
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -88,7 +90,9 @@ async def demander_a_home_assistant(token, debut_audio, bruit, conversation_id):
         rep = json.loads(await ws.recv())
         if rep.get("type") != "auth_ok":
             raise RuntimeError("Jeton refusé par Home Assistant (vérifie token.txt)")
-        demande = {"id": 1, "type": "assist_pipeline/run", "start_stage": "stt", "end_stage": "tts",
+        # On s'arrête après la réponse de Claude : la voix est fabriquée ensuite phrase par phrase
+        # (voir parler()), pour que Sarah commence à parler sans attendre la fin de la réponse.
+        demande = {"id": 1, "type": "assist_pipeline/run", "start_stage": "stt", "end_stage": "intent",
                    "input": {"sample_rate": RATE}, "timeout": 60}
         if PIPELINE:
             demande["pipeline"] = PIPELINE
@@ -168,8 +172,70 @@ async def demander_a_home_assistant(token, debut_audio, bruit, conversation_id):
 def telecharger(url):
     if url.startswith("/"):
         url = HA_URL + url
-    with urllib.request.urlopen(url, timeout=20) as r:
+    with urllib.request.urlopen(url, timeout=30) as r:
         return r.read()
+
+
+# ------------------------------------------------ voix : phrase par phrase
+_voix = {}
+
+
+def reglages_voix(token):
+    """Moteur, langue et voix de l'assistant vocal préféré (lus une fois dans Home Assistant)."""
+    if not _voix:
+        async def lire_pipeline():
+            async with websockets.connect(HA_URL.replace("http", "ws", 1) + "/api/websocket") as ws:
+                await ws.recv()
+                await ws.send(json.dumps({"type": "auth", "access_token": token}))
+                await ws.recv()
+                await ws.send(json.dumps({"id": 1, "type": "assist_pipeline/pipeline/list"}))
+                res = json.loads(await ws.recv())["result"]
+                return next(p for p in res["pipelines"] if p["id"] == (PIPELINE or res["preferred_pipeline"]))
+        p = asyncio.run(lire_pipeline())
+        _voix.update(engine_id=p["tts_engine"], language=p["tts_language"], voice=p["tts_voice"])
+    return _voix
+
+
+def morceaux(texte, taille=160):
+    """Découpe la réponse en morceaux d'une ou deux phrases."""
+    phrases = re.split(r"(?<=[.!?…])\s+", texte.strip())
+    blocs, courant = [], ""
+    for ph in phrases:
+        if courant and len(courant) + len(ph) > taille:
+            blocs.append(courant)
+            courant = ph
+        else:
+            courant = (courant + " " + ph).strip()
+    if courant:
+        blocs.append(courant)
+    return blocs
+
+
+def voix_de(token, texte):
+    v = reglages_voix(token)
+    req = urllib.request.Request(HA_URL + "/api/tts_get_url", method="POST",
+                                 headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+                                 data=json.dumps({"engine_id": v["engine_id"], "message": texte, "language": v["language"],
+                                                  "options": {"voice": v["voice"]}}).encode())
+    return telecharger(json.loads(urllib.request.urlopen(req, timeout=30).read())["path"])
+
+
+def parler(token, texte):
+    """Fabrique la voix de chaque morceau en parallèle et les joue dans l'ordre dès qu'ils sont prêts."""
+    t0 = time.time()
+    fin_parole.clear()
+    blocs = morceaux(texte)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futurs = [pool.submit(voix_de, token, b) for b in blocs]
+        for i, f in enumerate(futurs):
+            try:
+                a_jouer.put(f.result(timeout=40))
+            except Exception as e:
+                print(f"   voix : morceau {i + 1} en erreur ({e})", flush=True)
+            if i == 0:
+                print(f"   première phrase prête en {time.time() - t0:.1f} s ({len(blocs)} morceaux)", flush=True)
+    a_jouer.put(None)  # fin de la réponse
+    fin_parole.wait(120)
 
 
 # ------------------------------------------------------- boucle d'écoute
@@ -256,13 +322,9 @@ def boucle_ecoute():
         if r["erreur"] and not r["sarah"]:
             changer("parle", texte_sarah="Désolée, je n'ai pas réussi : " + str(r["erreur"]))
             time.sleep(4)
-        elif r["url"]:
+        elif r["sarah"]:
             changer("parle", texte_moi=r["moi"], texte_sarah=r["sarah"])
-            fin_parole.clear()
-            t1 = time.time()
-            a_jouer.put(telecharger(r["url"]))
-            print(f"   voix téléchargée en {time.time() - t1:.1f} s", flush=True)
-            fin_parole.wait(60)
+            parler(token, r["sarah"])
         with audio_q.mutex:
             audio_q.queue.clear()  # ne pas s'entendre elle-même
         rec.Reset()
@@ -361,10 +423,19 @@ def main():
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 return
-            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:  # Échap : elle se tait
                 pygame.mixer.stop()
-        if not a_jouer.empty():
-            son = pygame.mixer.Sound(file=io.BytesIO(a_jouer.get()))
+                with a_jouer.mutex:
+                    a_jouer.queue.clear()
+                fin_parole.set()
+        libre = canal_voix is None or not canal_voix.get_busy()
+        if libre and not a_jouer.empty():  # morceau suivant, seulement quand le précédent est fini
+            morceau = a_jouer.get()
+            if morceau is None:  # fin de la réponse
+                canal_voix = None
+                fin_parole.set()
+                continue
+            son = pygame.mixer.Sound(file=io.BytesIO(morceau))
             # enveloppe de sa voix (volume toutes les 1/30 s) pour animer le visage
             freq, _, canaux = pygame.mixer.get_init()
             ech = pygame.sndarray.array(son).astype(np.float32)
@@ -375,9 +446,6 @@ def main():
             env = env / (np.percentile(env, 95) + 1e-6)
             canal_voix = son.play()
             voix_debut = time.time()
-        if lire("mode") == "parle" and canal_voix is not None and not canal_voix.get_busy() and a_jouer.empty():
-            canal_voix = None
-            fin_parole.set()
 
         mode = lire("mode")
         if mode != "veille" and not visible:

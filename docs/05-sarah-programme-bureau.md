@@ -121,6 +121,17 @@ sarah.py (abonné aux événements) ──► volume.ps1 ──► volume de Win
 - **Cause :** l'adresse d'un tableau de bord Home Assistant doit contenir un **tiret**.
 - **Solution :** `ia-sarah`.
 
+### Problème 24 — Avec des réponses plus longues, elle mettait 16 à 20 secondes à parler
+- **Mesures :** Claude répondait en 2 à 4 s, mais la **fabrication de la voix** prenait 16 à 20 s.
+- **Cause 1, le relais :** sous Windows, `localhost` est d'abord essayé en **IPv6** (`::1`), alors que le relais n'écoutait qu'en IPv4 (`127.0.0.1`). Chaque requête attendait **2 secondes** avant le repli : 0,02 s en direct, 2,0 s par le relais.
+- **Cause 2 :** la voix de toute la réponse était fabriquée d'un bloc avant que Sarah commence à parler.
+- **Cause 3 :** ElevenLabs, appelé à travers Home Assistant, est irrégulier (2,6 à 9,5 s pour une phrase courte certains soirs).
+- **Solutions :**
+  1. Le relais écoute en IPv4 **et** en IPv6, et Sarah utilise `127.0.0.1`.
+  2. La réponse est découpée en morceaux d'une ou deux phrases, fabriqués **en parallèle** et joués dans l'ordre : Sarah commence dès que la première phrase est prête.
+  3. Des réponses de conversation plus courtes (deux ou trois phrases).
+- **Piste écartée pour l'instant :** appeler ElevenLabs directement en streaming depuis le PC (plus rapide, mais il faut garder une clé ElevenLabs sur le PC).
+
 ---
 
 ## Ce que j'ai appris
