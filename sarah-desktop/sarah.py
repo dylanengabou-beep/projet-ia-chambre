@@ -176,8 +176,10 @@ def boucle_ecoute():
     SetLogLevel(-1)
     token = TOKEN_FICHIER.read_text(encoding="utf-8-sig").strip()
     modele = Model(str(next((ICI / "modeles").glob("vosk-model-*"))))
-    grammaire = json.dumps(MOTS_REVEIL + ["[unk]"], ensure_ascii=False)
-    rec = KaldiRecognizer(modele, RATE, grammaire)
+    # Vocabulaire français complet : avec une grammaire limitée à « sarah », Vosk forçait
+    # n'importe quelle phrase à ressembler à « sarah » (faux réveils). Ici, « sarah » doit
+    # vraiment être reconnu parmi tous les mots français.
+    rec = KaldiRecognizer(modele, RATE)
     print(f"Sarah est prête. Dis : « Hey Sarah » (mots surveillés : {MOTS_REVEIL})", flush=True)
 
     recents = deque(maxlen=12)  # 1,2 s d'audio gardées en mémoire
@@ -197,9 +199,10 @@ def boucle_ecoute():
             continue
         fini = rec.AcceptWaveform(bloc)
         texte = json.loads(rec.Result() if fini else rec.PartialResult()).get("text" if fini else "partial", "")
-        if not any(m in texte for m in MOTS_REVEIL if m != "[unk]"):
+        if not any(m in texte.split() for m in MOTS_REVEIL):
             continue
         rec.Reset()
+        print(f"   réveillée par : « {texte} »", flush=True)
         # --- réveil ---
         changer("ecoute", texte_moi="", texte_sarah="")
         debut_audio = list(recents)[-8:]  # « Sarah » + le début de la demande
