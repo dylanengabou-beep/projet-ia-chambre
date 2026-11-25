@@ -88,6 +88,15 @@ La commande `network info` montre ensuite `host_internet: true` et `supervisor_i
 ### Problème 5 — Le dossier par défaut de VirtualBox était sur un disque débranché
 - **Solution :** créer la VM sur le SSD interne, ce qui est aussi plus rapide qu'un disque dur externe.
 
+### Problème 31 — « Système en mauvaise santé : échec de la vérification du système de fichiers de la partition de l'OS »
+- **Signalé par :** le Supervisor, comme correction **critique** dans Paramètres (raison `os_filesystem_check_error`).
+- **Cause probable :** des arrêts brutaux de la VM pendant mes essais (arrêts forcés, changements de réseau). La vérification faite au démarrage n'a pas abouti. Le disque, un disque virtuel sur le SSD, n'est pas en cause. Mes données sont sur une partition séparée, qui n'est pas touchée.
+- **Solution** (documentation officielle) :
+  1. faire une **sauvegarde complète** (je n'en avais aucune) : 444 Mo en 15 s ;
+  2. **redémarrer proprement** le système (Paramètres → Système → Matériel → Redémarrer le système), et non couper la VM. Home Assistant OS a deux copies du système et vérifie tout au démarrage.
+- **Résultat :** après le redémarrage (environ 1 min 40), plus aucun problème de santé. Claude, les LED et le volume fonctionnent.
+- **Leçon :** éteindre la VM proprement (`host shutdown` dans la console, ou depuis l'interface), jamais avec « Éteindre » dans VirtualBox.
+
 ---
 
 ## Ce que j'ai appris
